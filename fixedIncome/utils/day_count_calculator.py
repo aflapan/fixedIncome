@@ -145,11 +145,3 @@ class DayCountCalculator(object):
         return start_date_is_date and end_date_is_date and start_date_before_end_date
 
 
-
-# ------------------------------------
-# Testing
-start_date = datetime.date(2020, 2, 28)
-end_date = datetime.date(2020, 3, 31)
-print(DayCountCalculator.compute_accrual_length(start_date, end_date, "30/360"))
-
-

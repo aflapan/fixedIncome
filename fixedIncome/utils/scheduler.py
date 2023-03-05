@@ -1,7 +1,7 @@
 import datetime
 from dateutil.relativedelta import relativedelta
 import collections
-import pandas as pd
+import pandas as pd  # type: ignore
 
 
 class Scheduler(object):
@@ -103,21 +103,24 @@ class Scheduler(object):
         # first step is to generate the payment days without holiday adjustments
 
         match self.payment_frequency:
+            case 'zero-coupon':
+                increment = None
             case 'quarterly':
-                increment = relativedelta(months = 3)
+                increment = relativedelta(months=3)
             case 'semi-annual':
-                increment = relativedelta(months = 6)
+                increment = relativedelta(months=6)
             case 'annual':
-                increment = relativedelta(years = 1)
+                increment = relativedelta(years=1)
             case _:
                 raise ValueError(f"{self.payment_frequency} is not a valid payment frequency.")
 
         payment_dates = [(self.maturity_date, 'maturity date')]
         date = self.maturity_date
 
-        while date > self.dated_date + increment:
-            date = date - increment
-            payment_dates.append((date, 'coupon payment'))
+        if self.payment_frequency != 'zero-coupon':
+            while (date > self.dated_date + increment):
+                date = date - increment
+                payment_dates.append((date, 'coupon payment'))
 
         payment_dates.sort(key = lambda date_description_pair: date_description_pair[0]) # sort dates
 
@@ -137,10 +140,8 @@ class Scheduler(object):
                 raise ValueError(f" Business day adjustment {self.business_day_adjustment} is invalid.")
 
         self.payment_schedule['Adjusted Date'] = self.payment_schedule.apply(
-            lambda row:
-            row['Date'] if row['Date Type'] in ['dated date', 'purchase date']
-            else adjsutment_fxcn(row['Date']),
-            axis = 1
+            lambda row: row['Date'] if row['Date Type'] in ['dated date', 'purchase date'] else adjsutment_fxcn(row['Date']),
+            axis=1
         )
 
         return self.payment_schedule
@@ -372,13 +373,3 @@ class Scheduler(object):
         else:
             return self.add_new_york_business_days(date, business_days=-1)
 
-
-test_scheduler = Scheduler(
-    tenor='30Y',
-    purchase_date=datetime.date(2022, 12, 20),
-    maturity_date=datetime.date(2052, 12, 15),
-    settlement_convention="T+1",
-    payment_frequency="semi-annual",
-    business_day_adjustment="following")
-
-schedule = test_scheduler.create_payment_schedule()
