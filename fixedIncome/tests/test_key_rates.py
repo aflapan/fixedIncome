@@ -63,6 +63,15 @@ kr_collection = KeyRateCollection(key_rate_list)
 
 #--------------------------------------------------------------------------
 
+def test_KeyRate_equality():
+    """
+    Tests the equality of key rates,
+    """
+
+    copy_of_key_rate_list = deepcopy(key_rate_list)
+    assert(copy_of_key_rate_list == key_rate_list)
+
+
 def test_KeyRateCollection_iterator():
 
     iterator_list = [key_rate_obj for key_rate_obj in kr_collection]
@@ -134,5 +143,15 @@ def test_KeyRateCollection_adjustment_function_is_parallel_shift():
     assert all([abs(val - 0.01) < pass_thresh for val in collection_vals])
 
 
+def test_key_rate_collection_addition_makes_valid_collection():
+    """
+    Tests whether addition is implemented correctly by adding two halves of the key rate list,
+    constructed to be a valid collection, yields a valid key rate collection.
+    """
 
+    kr_collection_front = KeyRateCollection(key_rate_list[:4])
+    kr_collection_back = KeyRateCollection(key_rate_list[4:])
+    all_kr_collection = kr_collection_front + kr_collection_back
+
+    assert all_kr_collection._test_key_rate_dates()
 

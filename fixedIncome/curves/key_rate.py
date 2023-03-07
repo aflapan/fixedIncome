@@ -31,6 +31,7 @@ class KeyRate:
         self.adjustment_fxcn = self.create_adjustment_function()
         self.day_count_convention = day_count_convention
 
+
     def __eq__(self, other: KeyRate) -> bool:
         """
         Implements equality of key rates based day count convention, key rate dates, prior dates,
@@ -67,6 +68,15 @@ class KeyRate:
         the user to call the object directly.
         """
         return self.adjustment_fxcn(date_obj)
+
+    def __hash__(self):
+        """ Implements a hash based on immutable attributes, useful for set fast lookup in sets and dictionary keys."""
+        attribute_tuple = (self.day_count_convention,
+                           self.key_rate_date,
+                           self.prior_key_rate_date,
+                           self.next_key_rate_date)
+
+        return hash(attribute_tuple)
 
     def create_adjustment_function(self, bump_amount: float = 0.01):
         """
@@ -229,24 +239,23 @@ class KeyRateCollection:
         Returns a new KeyRateCollection or a reference to self.
         """
 
-        match other:
+        if isinstance(other, KeyRateCollection):
 
-            case KeyRateCollection(other):  # other is a KeyRateCollection
-                try:
-                    return self._add_key_rate_collection(other_collection=other)
-                except ValueError:
-                    return self
+            try:
+                return self._add_key_rate_collection(other_collection=other)
+            except ValueError:
+                return self
 
-            case KeyRate(other):  # other is an individual KeyRate
-                try:
-                    self._add_key_rate(other_key_rate=other)
-                    return self
+        elif isinstance(other, KeyRate):
+            try:
+                self._add_key_rate(other_key_rate=other)
+                return self
 
-                except ValueError:
-                    return self
+            except ValueError:
+                return self
 
-            case _:  # other is another type. Raise an error.
-                raise TypeError
+        else:
+            raise TypeError(f'Type {other.__class__} cannot be added to KeyRateCollection.')
 
     def _add_key_rate_collection(self, other_collection: KeyRateCollection) -> KeyRateCollection:
         """
