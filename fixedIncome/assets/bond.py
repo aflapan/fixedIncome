@@ -6,22 +6,23 @@ import scipy  # type: ignore
 import bisect
 from typing import Optional
 
-from fixedIncome.utils import scheduler, day_count_calculator
+from fixedIncome.utils import scheduler
+from fixedIncome.utils.day_count_calculator import DayCountCalculator
 
 
 class Bond(object):
 
     def __init__(self,
-                 price:float,
-                 coupon:float,
-                 principal:int,
-                 tenor:str,
-                 purchase_date:datetime.date,
+                 price: float,
+                 coupon: float,
+                 principal: int,
+                 tenor: str,
+                 purchase_date: datetime.date,
                  maturity_date: datetime.date,
-                 settlement_convention:str = 'T+1',
-                 payment_frequency:str = 'semi-annual',
-                 day_count_convention:str = 'act/act',
-                 business_day_adjustment:str = 'following') -> None:
+                 settlement_convention: str = 'T+1',
+                 payment_frequency: str = 'semi-annual',
+                 day_count_convention: str = 'act/act',
+                 business_day_adjustment: str = 'following') -> None:
         """
         Creates an instance of the bond class given the bond specifics detailed below.
 
@@ -45,8 +46,6 @@ class Bond(object):
         self.maturity_date = maturity_date
         self.day_count_convention = day_count_convention
         self.business_day_adjustment = business_day_adjustment
-
-        self.day_count_calculator_obj = day_count_calculator.DayCountCalculator()
 
         self.num_payments_per_year = self._calculate_num_payments_per_year()
         self.coupon_payment = self._calculate_coupon_payment()   # coupon payment in USD ($)
@@ -107,11 +106,11 @@ class Bond(object):
             following_date = self.payment_schedule['Date'].loc[date_index]
             reference_date = previous_date
 
-        accrual_period = self.day_count_calculator_obj.compute_accrual_length(
+        accrual_period = DayCountCalculator.compute_accrual_length(
             reference_date, self.settlement_date, dcc=self.day_count_convention
         )
 
-        accrual_fraction = accrual_period / self.day_count_calculator_obj.compute_accrual_length(
+        accrual_fraction = accrual_period / DayCountCalculator.compute_accrual_length(
             reference_date, following_date, dcc=self.day_count_convention
         )
 
@@ -153,7 +152,7 @@ class Bond(object):
         received_payments = self._is_payment_received(purchase_date)
 
         exponent_factors = [
-            self.day_count_calculator_obj.compute_accrual_length(
+            DayCountCalculator.compute_accrual_length(
                 start_date=purchase_date, end_date=adjusted_date, dcc=self.day_count_convention
             ) * self.num_payments_per_year
             for adjusted_date in self.payment_schedule.loc[received_payments, 'Adjusted Date']
@@ -256,7 +255,7 @@ class Bond(object):
 
         time_to_payments = pd.Series(
             [
-                self.day_count_calculator_obj.compute_accrual_length(
+                DayCountCalculator.compute_accrual_length(
                     start_date=purchase_date, end_date=adjusted_date, dcc=dcc
                 )
                 for adjusted_date in self.payment_schedule.loc[received_payments, 'Adjusted Date']],
