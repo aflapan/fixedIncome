@@ -191,7 +191,6 @@ class KeyRateCollection:
         """ Instantiates a KeyRateCollection object. """
         self.iter_index = 0
         self.key_rates = sorted(key_rates)  # Sorts based on key_rate_date for each KeyRate object
-
         self.compatible = self._test_key_rate_dates()
 
         if not self.compatible:
@@ -231,6 +230,13 @@ class KeyRateCollection:
     def __iter__(self):
         return self
 
+    def __eq__(self, other: KeyRateCollection) -> bool:
+        """
+        Implements equality of KeyRateCollection objects by testing for equality of their internal
+        list of KeyRate objects.
+        """
+        return self.key_rates == other.key_rates
+
     def __add__(self, other: Union[KeyRateCollection, KeyRate]) -> KeyRateCollection:
         """
         Builds collections of keys rates by adding the current collection with another one
@@ -240,7 +246,6 @@ class KeyRateCollection:
         """
 
         if isinstance(other, KeyRateCollection):
-
             try:
                 return self._add_key_rate_collection(other_collection=other)
             except ValueError:

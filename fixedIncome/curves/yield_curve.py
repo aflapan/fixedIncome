@@ -205,11 +205,6 @@ class YieldCurve(object):
         return pv.item()
 
 
-    def _calc_pv_yield_to_maturity_space(self, bond: Bond, adjustment = None) -> float:
-
-        return 0.0
-
-
     #--------------------------------------------------------------
     # functionality for bumping curves
 
@@ -218,6 +213,28 @@ class YieldCurve(object):
         Returns an adjustment
         """
         return lambda date_obj: bump_amount
+
+
+    def calculate_pv_deriv(self, bond: Bond) -> float:
+        """
+        Calculates the DV01 of the provided bond under parallel shifts of the yield curve.
+
+        Formula is
+            deriv = (PV(+half basis point) - PV(-half basis Point))/(0.005 - -0.005)
+        """
+        half_bp_adjustment = self.parallel_bump(bump_amount=0.005)  # unit is in %, so 0.005 = half a basis point
+        pv_plus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=half_bp_adjustment)
+
+        negative_half_bp_adjustment = self.parallel_bump(bump_amount=-0.005)
+        pv_minus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
+
+        deriv = (pv_plus_half_bp - pv_minus_half_bp)/0.01  # 0.01 = 0.005 - -0.005
+
+        return deriv
+
+
+
+
 
 
     #----------------------------------------------------------------
@@ -253,16 +270,23 @@ class YieldCurve(object):
         Plots the present value of the bond.
         """
 
+        deriv = self.calculate_pv_deriv(bond)
+        bond_pv = self.calculate_present_value(bond)
+
         parallel_shifts = np.arange(start=lower_shift, stop=upper_shift+shift_increment, step=shift_increment)
 
         pv_vals = [self.calculate_present_value(bond, self.parallel_bump(shift))
                    for shift in parallel_shifts]
 
+        tangent_line = [deriv * shift + bond_pv for shift in parallel_shifts]
+
         plt.figure(figsize=(10, 6))
         plt.plot(parallel_shifts*100, pv_vals, color="black", linewidth=2)
+        plt.plot(parallel_shifts*100, tangent_line, color="grey", linestyle='--', linewidth=0.75)
         plt.xlabel("Shift in Basis Points (bp)")
         plt.ylabel(f"Present Value in USD ($)")
         plt.title(f'Present Value of {bond.tenor} Bond Across Parallel Shifts in the Yield Curve')
+        plt.legend(['Present Value', 'Tangent Line at 0 bp Shift'], frameon=False)
         plt.show()
 
 

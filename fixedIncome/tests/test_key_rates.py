@@ -143,7 +143,7 @@ def test_KeyRateCollection_adjustment_function_is_parallel_shift():
     assert all([abs(val - 0.01) < pass_thresh for val in collection_vals])
 
 
-def test_key_rate_collection_addition_makes_valid_collection():
+def test_KeyRateCollection_addition_makes_valid_collection():
     """
     Tests whether addition is implemented correctly by adding two halves of the key rate list,
     constructed to be a valid collection, yields a valid key rate collection.
@@ -155,3 +155,46 @@ def test_key_rate_collection_addition_makes_valid_collection():
 
     assert all_kr_collection._test_key_rate_dates()
 
+def test_KeyRateCollection_addition_of_halves_gives_collection():
+    """ Tests that splitting the set of key rates, forming individual
+    collections, and then summing them, gives an equal KeyRateCollection
+    object as forming the collection on the entire set of KeyRates.
+    """
+
+    kr_collection_front = KeyRateCollection(key_rate_list[:4])
+    kr_collection_back = KeyRateCollection(key_rate_list[4:])
+
+    sum_key_rate_collection = kr_collection_front + kr_collection_back
+
+    assert kr_collection == sum_key_rate_collection
+
+def test_KeyRateCollection_addition_with_KeyRate_makes_valid_collection():
+    """
+    Tests whether addition is implemented correctly by adding the first individual KeyRate,
+    with a KeyRateCollection constructed from the remaining list. Tests whether the result KeyRateCollection
+    is valid.
+    """
+
+    (first_kr, *rest_kr) = key_rate_list
+
+    rest_kr_collection = KeyRateCollection(rest_kr)
+
+    sum_collection = rest_kr_collection + first_kr
+
+    assert sum_collection._test_key_rate_dates()
+
+def test_KeyRateCollection_addition_with_KeyRate_gives_collection():
+    """
+    Tests that splitting the set of key rates, forming an individual
+    KeyRate and a collection from the remaining KeyRates, and then summing them,
+    gives an equal KeyRateCollection object as forming the collection on the
+    original set of all KeyRates.
+    """
+
+    (first_kr, *rest_kr) = key_rate_list
+
+    rest_kr_collection = KeyRateCollection(rest_kr)
+
+    sum_collection = rest_kr_collection + first_kr
+
+    assert sum_collection == kr_collection
