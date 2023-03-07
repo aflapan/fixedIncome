@@ -76,17 +76,16 @@ class YieldCurve(object):
         reference date provided when the YieldCurve object is instantiated,
         the user-provided date, and the interpolation day-count convention string
         provided when the YieldCurve object is instantiated.
-
         day_count(reference_date, date) -> x-axis float value.
         """
+
         interpolation_axis_val = self.dcc_calculator_obj.compute_accrual_length(
             start_date=self.reference_date, end_date=date, dcc=self.interpolation_dcc
         )
-
         return interpolation_axis_val
 
 
-    def _preprocess_interpolation_values(self) -> list:
+    def _preprocess_interpolation_values(self) -> list[KnotValuePair]:
         """
         Pre-processes the interpolation dates into interpolation x-axis values.
         Returns an ordered list of namedTuples (x_val, y_val) of the x-axis knot points
@@ -105,7 +104,7 @@ class YieldCurve(object):
         return [KnotValuePair(knot_val, y_val) for (knot_val, y_val) in zip(x_values, y_values)]
 
 
-    def _create_interpolation_object(self):
+    def _create_interpolation_object(self) -> Callable[[float], float]:
         """
         Creates the interpolation object, a function which maps floats into floats.
         """
@@ -123,35 +122,35 @@ class YieldCurve(object):
         return interpolator
 
 
-    def interpolate(self, date: date, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> float:
+    def interpolate(self, date: date, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """
         Method which uses the interpolation object
         """
 
-        if adjustment_fxcn is None:
-            adjustment_fxcn = lambda date_obj: 0
+        if adjustment is None:
+            adjustment = lambda date_obj: 0
 
         x_axis_val = self.date_to_interpolation_axis(date)
 
         if x_axis_val < self.knot_value_tuples_list[0].knot:
 
-            match(self.left_end_behavior):
+            match self.left_end_behavior:
                 case 'constant':
-                    return self.knot_value_tuples_list[0].value + adjustment_fxcn(date)
+                    return self.knot_value_tuples_list[0].value + adjustment(date)
                 case _:
-                    return ValueError(f'Error in interpolate. {self.left_end_behavior} not a valid input.')
+                    raise ValueError(f'Error in interpolate. {self.left_end_behavior} not a valid input.')
 
         elif x_axis_val > self.knot_value_tuples_list[-1].knot:
 
-            match(self.right_end_behavior):
+            match self.right_end_behavior:
                 case 'constant':
-                    return self.knot_value_tuples_list[-1].value + adjustment_fxcn(date)
+                    return self.knot_value_tuples_list[-1].value + adjustment(date)
 
                 case _:
                     raise ValueError(f'Error in interpolate. {self.right_end_behavior} not a valid input.')
 
         else:
-            return self.interpolator(x_axis_val).item() + adjustment_fxcn(date)
+            return self.interpolator(x_axis_val) + adjustment(date)
 
 
     def reset_interpolation_values(self, new_values: pd.Series) -> None:
@@ -179,7 +178,7 @@ class YieldCurve(object):
                 raise ValueError(f'PV calculation for interpolation space {self.interpolation_space} '
                                  f'not implemented.')
 
-    def _calc_pv_yield_space(self, bond: Bond, adjustment_fxcn = None) -> float:
+    def _calc_pv_yield_space(self, bond: Bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """
         Returns a float for the present value of a bond.
         """
@@ -198,15 +197,15 @@ class YieldCurve(object):
         payment_amounts = bond.payment_schedule.loc[received_payments, ['Adjusted Date', 'Payment ($)']].set_index('Adjusted Date')
         payment_dates = bond.payment_schedule.loc[received_payments, 'Adjusted Date']
 
-        yields = np.array([self.interpolate(pymnt_date, adjustment_fxcn) for pymnt_date in payment_dates])
+        yields = np.array([self.interpolate(pymnt_date, adjustment) for pymnt_date in payment_dates])
 
         # Divide yields by 100 to convert from % to absolute
-        pv = np.exp(-(yields/100) * time_to_payments).dot(payment_amounts) # sum_{i=1}^n c_i e^{-y_i * t_i}
+        pv = np.exp(-(yields/100) * time_to_payments).dot(payment_amounts)  # sum_{i=1}^n Payment_i e^{-y_i * t_i}
 
         return pv.item()
 
 
-    def _calc_pv_yield_to_maturity_space(self, bond: Bond, adjustment_fxcn= None) -> float:
+    def _calc_pv_yield_to_maturity_space(self, bond: Bond, adjustment = None) -> float:
 
         return 0.0
 
@@ -223,7 +222,7 @@ class YieldCurve(object):
 
     #----------------------------------------------------------------
     # plotting methods
-    def plot(self, adjustment_fxcn = None) -> None:
+    def plot(self, adjustment: Optional[Callable[[date], float]] = None) -> None:
         """
         Plots the yield curve object.
         """
@@ -232,7 +231,7 @@ class YieldCurve(object):
         )
 
         orig_y_vals = [self.interpolate(date_obj) for date_obj in interpolation_timestamps.date]
-        bumped_y_vals = [self.interpolate(date_obj, adjustment_fxcn) for date_obj in interpolation_timestamps.date]
+        bumped_y_vals = [self.interpolate(date_obj, adjustment) for date_obj in interpolation_timestamps.date]
 
         plot_series = pd.Series(orig_y_vals, index=interpolation_timestamps.date)
         title_string = f"{self.interpolation_space} Curve Interpolated " \
@@ -241,7 +240,7 @@ class YieldCurve(object):
         plt.figure(figsize=(10, 6))
         plot_series.plot(title=title_string, ylabel=self.interpolation_space, color='black', linewidth=2)
 
-        if adjustment_fxcn is not None:
+        if adjustment is not None:
             plot_bumped_series = pd.Series(bumped_y_vals, index=interpolation_timestamps.date)
             plot_bumped_series.plot(linestyle='--', color='black')
 
@@ -249,7 +248,7 @@ class YieldCurve(object):
 
 
     def plot_price_curve(self, bond: Bond,
-                         lower_shift: float =-2.0, upper_shift:float = 2.0, shift_increment: float = 0.01) -> None:
+                         lower_shift: float = -2.0, upper_shift: float = 2.0, shift_increment: float = 0.01) -> None:
         """
         Plots the present value of the bond.
         """
@@ -308,7 +307,7 @@ class YieldCurveFactory(object):
         return yield_curve
 
     def construct_yield_curve(self, bond_collection: Sequence[Bond], interpolation_method: str,
-                                                 reference_date: date) -> YieldCurve:
+                              reference_date: date) -> YieldCurve:
 
         knot_dates = [bond_obj.maturity_date for bond_obj in bond_collection]
 

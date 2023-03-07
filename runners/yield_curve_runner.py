@@ -8,7 +8,7 @@ from fixedIncome.utils.day_count_calculator import *
 curve_factory_obj = YieldCurveFactory()
 
 # Construct Bond Objects from U.S. Treasury Bonds
-# Reference page 51 of Fixed Income Assets.
+
 
 purchase_date = datetime.date(2023, 2, 27)
 
@@ -107,8 +107,9 @@ key_rate_obj = KeyRate('act/act',
                        prior_key_rate_date=datetime.date(2029, 2, 28),
                        next_key_rate_date=datetime.date(2051, 5, 15))
 
+key_rate_obj.set_adjustment_level(0.05)
 
-yield_curve.plot(adjustment_fxcn=key_rate_obj.get_adjustment_function())
+yield_curve.plot(adjustment=key_rate_obj)
 
 yield_curve.plot_price_curve(thirty_yr)
 

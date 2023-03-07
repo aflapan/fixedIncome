@@ -33,7 +33,7 @@ class KeyRate:
 
     def __eq__(self, other: KeyRate) -> bool:
         """
-        Implements eqyality of key rates based day count convention, key rate dates, prior dates,
+        Implements equality of key rates based day count convention, key rate dates, prior dates,
         and following dates.
         """
         day_count_conventions_equal = self.day_count_convention == other.day_count_convention
@@ -153,6 +153,15 @@ class KeyRate:
                                  f' not matched in call to self.create_bump_function method.')
 
         return adjustment_fxcn
+
+    def set_adjustment_level(self, bump: float) -> None:
+        """
+        Setter method for bump key rate adjustment. Creates a new adjustment function which
+        triangulates from 0, to the provided bump amount, back to 0.
+
+        Sets this new function as the objects adjustment function.
+        """
+        self.adjustment_fxcn = self.create_adjustment_function(bump_amount=bump)
 
 
     def get_adjustment_function(self):
