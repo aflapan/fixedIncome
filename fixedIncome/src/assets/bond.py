@@ -6,8 +6,8 @@ import scipy  # type: ignore
 import bisect
 from typing import Optional
 
-from fixedIncome.utils import scheduler
-from fixedIncome.utils.day_count_calculator import DayCountCalculator
+from fixedIncome.src.scheduling_tools import scheduler
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
 
 class Bond(object):

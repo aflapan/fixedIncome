@@ -4,7 +4,7 @@ import bisect
 from datetime import date
 from typing import Optional, Callable, Union, Iterable
 
-from fixedIncome.utils.day_count_calculator import DayCountCalculator
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
 
 class KeyRate:

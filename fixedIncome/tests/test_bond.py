@@ -3,7 +3,7 @@ This file contains unit tests for the Bond class.
 """
 
 import datetime
-from fixedIncome.assets.bond import Bond
+from fixedIncome.src.assets.bond import Bond
 
 #-----------------------------------------------------------------
 # Create a series of test objects.

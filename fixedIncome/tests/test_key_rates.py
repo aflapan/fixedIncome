@@ -8,7 +8,7 @@ import datetime
 
 import pandas as pd  # type: ignore
 
-from fixedIncome.curves.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 #----------------------------------------------------------------------
 # Construct the objects to test

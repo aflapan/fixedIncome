@@ -1,10 +1,9 @@
 """
 This file contains the unit tests
 """
-import numpy as np
 import datetime
-from fixedIncome.curves.yield_curve import YieldCurve, YieldCurveFactory
-from fixedIncome.assets.bond import Bond
+from fixedIncome.src.curves.yield_curve import YieldCurveFactory
+from fixedIncome.src.assets.bond import Bond
 
 
 # Create a series of test objects.
@@ -113,3 +112,8 @@ def test_present_value_for_calibration_instruments() -> None:
     full_bond_prices = [bond.full_price for bond in bond_collection]
 
     assert all([abs(pv - full_price) < pass_thresh for (pv, full_price) in zip(present_values, full_bond_prices)])
+
+
+def test_yield_curve_factory_connected_to_fed_auction_website() -> None:
+
+    assert curve_factory_obj.read_data_from_auction_website()

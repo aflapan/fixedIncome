@@ -1,5 +1,11 @@
+"""
+This script contains the implementation of two objects related to curve construction,
+the YieldCurve object and the YieldCurveFactory object.
+"""
+
 
 import os
+import urllib.request
 import numpy as np  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 import pandas as pd  # type: ignore
@@ -8,9 +14,8 @@ from datetime import date
 from typing import Callable, Optional, NamedTuple, Sequence
 
 
-from fixedIncome.utils.day_count_calculator import DayCountCalculator
-from fixedIncome.assets.bond import Bond
-
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+from fixedIncome.src.assets.bond import Bond
 
 
 class KnotValuePair(NamedTuple):
@@ -162,7 +167,7 @@ class YieldCurve(object):
 
     #-----------------------------------------------------------------
     # present value calculators
-    def calculate_present_value(self, bond: Bond, adjustment_fxcn = None) -> Optional[float]:
+    def calculate_present_value(self, bond: Bond, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
         """
         Wrapper function for the specific implementations of present value calculations.
         """
@@ -208,9 +213,9 @@ class YieldCurve(object):
     #--------------------------------------------------------------
     # functionality for bumping curves
 
-    def parallel_bump(self, bump_amount = 0.01):
+    def parallel_bump(self, bump_amount = 0.01) -> Callable[[date], float]:
         """
-        Returns an adjustment
+        Returns an adjustment function corresponding to a parallel shift (i.e. a constant of bump_amount).
         """
         return lambda date_obj: bump_amount
 
@@ -231,9 +236,9 @@ class YieldCurve(object):
         negative_half_bp_adjustment = self.parallel_bump(bump_amount=offset - 0.005)
         pv_minus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
 
-        deriv = (pv_plus_half_bp - pv_minus_half_bp)/0.01  # 0.01 = 0.005 - -0.005
+        derivative = (pv_plus_half_bp - pv_minus_half_bp)/0.01  # 0.01 = 0.005 - -0.005
 
-        return deriv
+        return derivative
 
     def duration(self, bond: Bond) -> float:
         """
@@ -252,15 +257,10 @@ class YieldCurve(object):
 
         derivative_positive_bump = self.calculate_pv_deriv(bond, offset=0.005)
         derivative_negative_bump = self.calculate_pv_deriv(bond, offset=-0.005)
-        second_deriv = (derivative_positive_bump - derivative_negative_bump) / 0.01
+        second_derivative = (derivative_positive_bump - derivative_negative_bump) / 0.01
+        present_value = self.calculate_present_value(bond)
 
-        return second_deriv / self.calculate_present_value(bond)
-
-
-
-
-
-
+        return second_derivative / present_value
 
 
     #----------------------------------------------------------------
@@ -293,7 +293,9 @@ class YieldCurve(object):
     def plot_price_curve(self, bond: Bond,
                          lower_shift: float = -2.0, upper_shift: float = 2.0, shift_increment: float = 0.01) -> None:
         """
-        Plots the present value of the bond.
+        Plots the present value of the bond along with linear (duration only) and
+        quadratic (duration+convexity) approximations of the bond price as the yield curve
+        parallel shifts up and down.
         """
 
         deriv = self.calculate_pv_deriv(bond)
@@ -305,14 +307,13 @@ class YieldCurve(object):
         pv_vals = [self.calculate_present_value(bond, self.parallel_bump(shift))
                    for shift in parallel_shifts]
 
-        tangent_line = [deriv * shift + bond_pv for shift in parallel_shifts]
-
+        linear_approx = [deriv * shift + bond_pv for shift in parallel_shifts]
         quad_approx = [bond_pv + deriv * shift + shift**2 * bond_pv*bond_convexty/2 for shift in parallel_shifts]
 
         plt.figure(figsize=(10, 6))
         plt.plot(parallel_shifts*100, pv_vals, color="black", linewidth=2)
         plt.plot(parallel_shifts*100, quad_approx, color="black", linestyle="-.", linewidth=1.5)
-        plt.plot(parallel_shifts*100, tangent_line, color="black", linestyle=':', linewidth=1)
+        plt.plot(parallel_shifts*100, linear_approx, color="black", linestyle=':', linewidth=1)
         plt.xlabel("Shift in Basis Points (bp)")
         plt.ylabel(f"Present Value in USD ($)")
         plt.title(f'Present Value of {bond.tenor} Bond Across Parallel Shifts in the Yield Curve')
@@ -322,14 +323,10 @@ class YieldCurve(object):
         plt.show()
 
 
-
-
-
 class YieldCurveFactory(object):
     """
     A Factory object which creates YieldCurve objects.
     """
-
 
     #------------------------------------------------------------------
     # Methods for constructing a curve based on bond Yields
@@ -406,6 +403,8 @@ class YieldCurveFactory(object):
 
         url = os.path.join(url_base, url_extension, "securities.csv")
 
-        pass
+        urllib.request.urlopen(url)
+
+        return False
 
 

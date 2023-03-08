@@ -1,8 +1,8 @@
+from datetime import date
 
-from fixedIncome.curves.yield_curve import *
-from fixedIncome.curves.key_rate import *
-from fixedIncome.utils.day_count_calculator import *
-
+from fixedIncome.src.curves.yield_curve import *
+from fixedIncome.src.curves.key_rate import *
+from fixedIncome.src.web_scraper.web_scraper import *
 
 def main(bond_collection, curve_factory) -> None:
 
@@ -16,7 +16,7 @@ def main(bond_collection, curve_factory) -> None:
     key_rate_obj = KeyRate('act/act',
                            key_rate_date=date(2030, 2, 28),
                            prior_key_rate_date=date(2029, 2, 28),
-                           next_key_rate_date=date(2051, 5, 15))
+                           next_key_rate_date=date(2031, 5, 15))
 
     key_rate_obj.set_adjustment_level(0.05)
 
@@ -32,15 +32,23 @@ def main(bond_collection, curve_factory) -> None:
     print(durations)
 
     convexities = [yield_curve.convexity(bond) for bond in bond_collection]
-    print("Convexities are...")
+    print("Convexity values are...")
     print(convexities)
+
+    #-------------------------------------------------------------------------
+    # Opening Treasury website
+
+    web_scraper = WebScraper()
+
+    print(web_scraper.get_url())
 
 
 
 if __name__ == '__main__':
     curve_factory_obj = YieldCurveFactory()
 
-    # Construct Bond Objects from U.S. Treasury Bonds
+    # Construct Bond Objects from U.S. Treasury Bonds found on
+    # https://www.treasurydirect.gov/auctions/announcements-data-results/
 
     purchase_date = date(2023, 2, 27)
 
@@ -67,7 +75,7 @@ if __name__ == '__main__':
                   principal=100,
                   tenor='2Y',
                   purchase_date=purchase_date,
-                  maturity_date=datetime.date(2025, 2, 28))
+                  maturity_date=date(2025, 2, 28))
 
     # Three Year
     three_yr = Bond(price=99.795799,
