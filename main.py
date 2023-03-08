@@ -4,14 +4,14 @@ from fixedIncome.curves.key_rate import *
 from fixedIncome.utils.day_count_calculator import *
 
 
-def main() -> None:
+def main(bond_collection, curve_factory) -> None:
 
     #---------------------------------------------------------------------
     # Yield Curve
 
-    yield_curve = curve_factory_obj.construct_yield_curve(bond_collection,
-                                                          interpolation_method='cubic',
-                                                          reference_date=purchase_date)
+    yield_curve = curve_factory.construct_yield_curve(bond_collection,
+                                                      interpolation_method='cubic',
+                                                      reference_date=purchase_date)
     # Trial Key Rate to test bumping Yield Curve
     key_rate_obj = KeyRate('act/act',
                            key_rate_date=date(2030, 2, 28),
@@ -26,10 +26,14 @@ def main() -> None:
 
     # DV01 calculations
 
-    pv_derivs = [yield_curve.calculate_pv_deriv(bond) for bond in bond_collection]
+    durations = [yield_curve.duration(bond) for bond in bond_collection]
 
-    print("Derivative values are...")
-    print(pv_derivs)
+    print("Duration values are...")
+    print(durations)
+
+    convexities = [yield_curve.convexity(bond) for bond in bond_collection]
+    print("Convexities are...")
+    print(convexities)
 
 
 
@@ -113,8 +117,8 @@ if __name__ == '__main__':
                      purchase_date=purchase_date,
                      maturity_date=date(2053, 2, 15))
 
-    bond_collection = [
+    bond_list = [
         four_wk, one_yr, two_yr, three_yr, five_yr, seven_yr, ten_yr, twenty_yr, thirty_yr
     ]
 
-    main()
+    main(bond_list, curve_factory_obj)

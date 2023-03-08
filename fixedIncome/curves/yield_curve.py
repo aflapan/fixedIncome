@@ -214,23 +214,49 @@ class YieldCurve(object):
         """
         return lambda date_obj: bump_amount
 
-
-    def calculate_pv_deriv(self, bond: Bond) -> float:
+    #----------------------------------------------------------------------
+    # Duration and convexity with respect to parallel shifts of yield curve
+    def calculate_pv_deriv(self, bond: Bond, offset: float = 0.0) -> float:
         """
         Calculates the DV01 of the provided bond under parallel shifts of the yield curve.
+        offset allows the user to specify a shift around which the derivative will be computed.
+
 
         Formula is
-            deriv = (PV(+half basis point) - PV(-half basis Point))/(0.005 - -0.005)
+            deriv = (PV(offset+half basis point) - PV(offset-half basis Point))/(0.005 - -0.005)
         """
-        half_bp_adjustment = self.parallel_bump(bump_amount=0.005)  # unit is in %, so 0.005 = half a basis point
+        half_bp_adjustment = self.parallel_bump(bump_amount=offset + 0.005)  # unit is in %, so 0.005 = half a basis point
         pv_plus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=half_bp_adjustment)
 
-        negative_half_bp_adjustment = self.parallel_bump(bump_amount=-0.005)
+        negative_half_bp_adjustment = self.parallel_bump(bump_amount=offset - 0.005)
         pv_minus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
 
         deriv = (pv_plus_half_bp - pv_minus_half_bp)/0.01  # 0.01 = 0.005 - -0.005
 
         return deriv
+
+    def duration(self, bond: Bond) -> float:
+        """
+        Calculates the duration of the bond, as
+        -1/P * dP/dy where P is the bond price.
+        """
+        derivative = self.calculate_pv_deriv(bond)
+        present_value = self.calculate_present_value(bond)  # should I calculate present value or can I just use price?
+        return -derivative/present_value
+
+    def convexity(self, bond: Bond) -> float:
+        """
+        calculate the convexity of a bond, defined as
+        C: = 1/P * d^2 P/d^2y
+        """
+
+        derivative_positive_bump = self.calculate_pv_deriv(bond, offset=0.005)
+        derivative_negative_bump = self.calculate_pv_deriv(bond, offset=-0.005)
+        second_deriv = (derivative_positive_bump - derivative_negative_bump) / 0.01
+
+        return second_deriv / self.calculate_present_value(bond)
+
+
 
 
 
@@ -248,7 +274,6 @@ class YieldCurve(object):
         )
 
         orig_y_vals = [self.interpolate(date_obj) for date_obj in interpolation_timestamps.date]
-        bumped_y_vals = [self.interpolate(date_obj, adjustment) for date_obj in interpolation_timestamps.date]
 
         plot_series = pd.Series(orig_y_vals, index=interpolation_timestamps.date)
         title_string = f"{self.interpolation_space} Curve Interpolated " \
@@ -258,6 +283,7 @@ class YieldCurve(object):
         plot_series.plot(title=title_string, ylabel=self.interpolation_space, color='black', linewidth=2)
 
         if adjustment is not None:
+            bumped_y_vals = [self.interpolate(date_obj, adjustment) for date_obj in interpolation_timestamps.date]
             plot_bumped_series = pd.Series(bumped_y_vals, index=interpolation_timestamps.date)
             plot_bumped_series.plot(linestyle='--', color='black')
 
@@ -272,6 +298,7 @@ class YieldCurve(object):
 
         deriv = self.calculate_pv_deriv(bond)
         bond_pv = self.calculate_present_value(bond)
+        bond_convexty = self.convexity(bond)
 
         parallel_shifts = np.arange(start=lower_shift, stop=upper_shift+shift_increment, step=shift_increment)
 
@@ -280,13 +307,18 @@ class YieldCurve(object):
 
         tangent_line = [deriv * shift + bond_pv for shift in parallel_shifts]
 
+        quad_approx = [bond_pv + deriv * shift + shift**2 * bond_pv*bond_convexty/2 for shift in parallel_shifts]
+
         plt.figure(figsize=(10, 6))
         plt.plot(parallel_shifts*100, pv_vals, color="black", linewidth=2)
-        plt.plot(parallel_shifts*100, tangent_line, color="grey", linestyle='--', linewidth=0.75)
+        plt.plot(parallel_shifts*100, quad_approx, color="black", linestyle="-.", linewidth=1.5)
+        plt.plot(parallel_shifts*100, tangent_line, color="black", linestyle=':', linewidth=1)
         plt.xlabel("Shift in Basis Points (bp)")
         plt.ylabel(f"Present Value in USD ($)")
         plt.title(f'Present Value of {bond.tenor} Bond Across Parallel Shifts in the Yield Curve')
-        plt.legend(['Present Value', 'Tangent Line at 0 bp Shift'], frameon=False)
+        plt.legend(['Present Value', 'Approximation with Duration and Convexity', 'Approximation with Duration'],
+                   frameon=False)
+        plt.grid(True, alpha=0.5, linewidth=0.5)
         plt.show()
 
 

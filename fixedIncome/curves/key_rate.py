@@ -288,9 +288,7 @@ class KeyRateCollection:
         Returns a reference to self.
         """
 
-        kr_insertion_index = bisect.bisect_right(self.key_rates, other_key_rate)
-
-        self.key_rates.insert(kr_insertion_index, other_key_rate)
+        bisect.insort_right(self.key_rates, other_key_rate)
 
         self._test_key_rate_dates()
 
