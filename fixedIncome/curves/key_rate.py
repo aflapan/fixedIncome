@@ -212,7 +212,7 @@ class KeyRateCollection:
 
     def __bool__(self):
         """ Truthy if the list of KeyRates is non-empty and valid (as determined by _test_key_rate_collection). """
-        return bool(self.key_rates) and self._test_key_rate_dates()
+        return bool(self.key_rates) and self.compatible
 
     def __next__(self):
         """
@@ -280,15 +280,23 @@ class KeyRateCollection:
             print(error_str)
             return self
 
-    def _add_key_rate(self, other_key_rate: KeyRate) -> None:
+    def _add_key_rate(self, other_key_rate: KeyRate) -> KeyRateCollection:
         """
         Method for adding an individual key rate
 
         Optimized to be faster than _add_key_rate_collection, as the self is modified in place.
+        Returns a reference to self.
         """
-        # finish this
-        bisect.bisect_right()
-        pass
+
+        kr_insertion_index = bisect.bisect_right(self.key_rates, other_key_rate)
+
+        self.key_rates.insert(kr_insertion_index, other_key_rate)
+
+        self._test_key_rate_dates()
+
+        self._create_combined_adjustment_function()  # recreate adjustment function with new KeyRate included
+
+        return self
 
 
     #------------------------------------------------------------------------
