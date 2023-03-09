@@ -8,6 +8,8 @@ import datetime
 
 import pandas as pd  # type: ignore
 
+from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.curves.yield_curve import YieldCurve, YieldCurveFactory
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 #----------------------------------------------------------------------
@@ -59,7 +61,6 @@ thirty_yr_kr = KeyRate(day_count_convention='act/act',
 
 key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr, thirty_yr_kr]
 kr_collection = KeyRateCollection(key_rate_list)
-
 
 #--------------------------------------------------------------------------
 

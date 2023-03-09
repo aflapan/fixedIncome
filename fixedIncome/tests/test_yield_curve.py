@@ -4,6 +4,7 @@ This file contains the unit tests
 import datetime
 from fixedIncome.src.curves.yield_curve import YieldCurveFactory
 from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 
 # Create a series of test objects.
@@ -113,7 +114,36 @@ def test_present_value_for_calibration_instruments() -> None:
 
     assert all([abs(pv - full_price) < pass_thresh for (pv, full_price) in zip(present_values, full_bond_prices)])
 
+def test_bond_pv_does_not_change_for_key_rate_beyond_maturity():
+    """
+    Tests that a Bond does not have exposure to a KeyRate if the prior date
+    for the KeyRate is greater than or equal to the maturity date of the bond.
+
+    Simply stated, the dv01 of the bond with respect to a key rate is 0 if the bond has no
+    exposure to the key rate.
+    """
+
+    twenty_yr_kr = KeyRate(day_count_convention='act/act',
+                           key_rate_date=datetime.date(2043, 2, 15),
+                           prior_key_rate_date=datetime.date(2033, 2, 15),
+                           next_key_rate_date=datetime.date(2053, 2, 15))
+
+    thirty_yr_kr = KeyRate(day_count_convention='act/act',
+                           key_rate_date=datetime.date(2053, 2, 15),
+                           prior_key_rate_date=datetime.date(2043, 2, 15),
+                           next_key_rate_date=None)
+
+    pass_thresh = 1e-8
+    twenty_yr_key_rate_dv01 = yield_curve.dv01(ten_yr, twenty_yr_kr)
+    thirty_yr_key_rate_dv01 = yield_curve.dv01(ten_yr, thirty_yr_kr)
+
+    assert abs(twenty_yr_key_rate_dv01) < pass_thresh and abs(thirty_yr_key_rate_dv01) < pass_thresh
+
+
 
 def test_yield_curve_factory_connected_to_fed_auction_website() -> None:
 
     assert curve_factory_obj.read_data_from_auction_website()
+
+
+

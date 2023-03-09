@@ -16,6 +16,7 @@ from typing import Callable, Optional, NamedTuple, Sequence
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 
 class KnotValuePair(NamedTuple):
@@ -261,6 +262,33 @@ class YieldCurve(object):
         present_value = self.calculate_present_value(bond)
 
         return second_derivative / present_value
+
+    def dv01(self, bond: Bond, adjustment: KeyRate) -> float:
+        """
+        Calculates the DV01 with respect to a KeyRate. Returns a float.
+        """
+
+        adjustment.create_adjustment_function()  # creates the default adjustment function with 1 bp movement
+
+        pv_with_adjustment = self.calculate_present_value(bond, adjustment)
+
+        pv_without_adjustment = self.calculate_present_value(bond)
+
+        key_rate_dv01 = -(pv_with_adjustment - pv_without_adjustment) / (0.01 * 100)  # 100 to convert into bps
+
+        return key_rate_dv01
+
+    def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[float]:
+        """
+        Computes the dv01s of the bond with respect to each KeyRate in the KeyRateCollection.
+        """
+
+        dv01_list = [self.dv01(bond, key_rate) for key_rate in key_rate_collection]
+
+        return dv01_list
+
+
+
 
 
     #----------------------------------------------------------------
