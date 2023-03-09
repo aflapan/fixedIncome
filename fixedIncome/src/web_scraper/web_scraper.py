@@ -1,6 +1,6 @@
 import os
 import urllib.request
-import pandas as pd
+
 
 
 class WebScraper:
@@ -11,7 +11,7 @@ class WebScraper:
         self.html_str = None
         r"https://www.treasurydirect.gov/WS/common/export/Securities.csv"
 
-    def get_url(self):
+    def get_url(self) -> str:
         return self.url
 
     def read_url_into_html_str(self) -> str:
