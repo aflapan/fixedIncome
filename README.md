@@ -10,6 +10,6 @@ This project is currently under construction, and future work will include (in o
 
 1. Functionality to download data from the U.S. Treasury Direct API and calibrate a yield curve automatically on real data.
 2. Implementations of KeyRate hedging strategies and simulations.
-3. Alternative forms of yield curve calibration, including interpolations in different spaces, least-squares fitting in various basis function expansions.
-4. Alternate asset classes, include outright SOFR and Fed Fund interest rate swaps/
+3. Alternative forms of yield curve calibration, including interpolations in different spaces and least-squares fitting in various basis function expansions.
+4. Alternate asset classes, include outright SOFR and Fed Fund interest rate swaps with their corresponding outright curves. 
 5. If, time permits, a global solver for interest rate curves.
