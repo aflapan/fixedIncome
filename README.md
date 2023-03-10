@@ -12,4 +12,4 @@ This project is currently under construction, and future work will include (in o
 2. Implementations of KeyRate and PCA hedging strategies and simulations. 
 3. Alternative forms of yield curve calibration, including interpolations in different spaces and least-squares fitting in various basis function expansions.
 4. Alternate asset classes, include outright SOFR and Fed Fund interest rate swaps with their corresponding outright curves. 
-5. If, time permits, a global solver for interest rate curves.
+5. If time permits, a global solver for interest rate curves.
