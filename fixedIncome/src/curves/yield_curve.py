@@ -23,8 +23,10 @@ class KnotValuePair(NamedTuple):
     knot: float
     value: float
 
-    def __str__(self):
-        return f"knot point {self.knot}, value {self.value}"
+class HedgeRatio(NamedTuple):
+    dv01: float
+    hedge_ratio: float
+    key_rate_date: date
 
 
 class YieldCurve(object):
@@ -278,17 +280,21 @@ class YieldCurve(object):
 
         return key_rate_dv01
 
-    def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[float]:
+    def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
         """
         Computes the dv01s of the bond with respect to each KeyRate in the KeyRateCollection.
         """
 
         dv01_list = [self.dv01(bond, key_rate) for key_rate in key_rate_collection]
 
-        return dv01_list
+        sum_of_dv01s = sum(dv01_list)
 
+        hedge_ratios = [dv01/sum_of_dv01s for dv01 in dv01_list]
 
+        key_rate_dates = [kr.key_rate_date for kr in key_rate_collection]  # iteration broken here
 
+        return [HedgeRatio(dv01, hedge_ratios, key_rate_date) for
+                (dv01, hedge_ratios, key_rate_date) in zip(dv01_list, hedge_ratios, key_rate_dates)]
 
 
     #----------------------------------------------------------------

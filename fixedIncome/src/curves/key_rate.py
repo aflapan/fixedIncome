@@ -222,6 +222,7 @@ class KeyRateCollection:
             key_rate_obj = self.key_rates[self.iter_index]
 
         except IndexError:
+            self.iter_index = 0
             raise StopIteration()
 
         self.iter_index += 1

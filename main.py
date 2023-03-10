@@ -13,14 +13,52 @@ def main(bond_collection, curve_factory) -> None:
                                                       interpolation_method='cubic',
                                                       reference_date=purchase_date)
     # Trial Key Rate to test bumping Yield Curve
-    key_rate_obj = KeyRate('act/act',
-                           key_rate_date=date(2030, 2, 28),
-                           prior_key_rate_date=date(2029, 2, 28),
-                           next_key_rate_date=date(2031, 5, 15))
 
-    key_rate_obj.set_adjustment_level(0.05)
+    four_wk_kr = KeyRate(day_count_convention='act/act',
+                         key_rate_date=date(2023, 3, 28),
+                         prior_key_rate_date=None,
+                         next_key_rate_date=date(2024, 2, 22))
 
-    yield_curve.plot(adjustment=key_rate_obj)
+    one_yr_kr = KeyRate(day_count_convention='act/act',
+                        key_rate_date=date(2024, 2, 22),
+                        prior_key_rate_date=date(2023, 3, 28),
+                        next_key_rate_date=date(2025, 2, 28))
+
+    two_yr_kr = KeyRate(day_count_convention='act/act',
+                        key_rate_date=date(2025, 2, 28),
+                        prior_key_rate_date=date(2024, 2, 22),
+                        next_key_rate_date=date(2026, 2, 15))
+
+    three_year_kr = KeyRate(day_count_convention='act/act',
+                            key_rate_date=date(2026, 2, 15),
+                            prior_key_rate_date=date(2025, 2, 28),
+                            next_key_rate_date=date(2030, 2, 28))
+
+    seven_yr_kr = KeyRate(day_count_convention='act/act',
+                          key_rate_date=date(2030, 2, 28),
+                          prior_key_rate_date=date(2026, 2, 15),
+                          next_key_rate_date=date(2033, 2, 15))
+
+    ten_yr_kr = KeyRate(day_count_convention='act/act',
+                        key_rate_date=date(2033, 2, 15),
+                        prior_key_rate_date=date(2030, 2, 28),
+                        next_key_rate_date=date(2043, 2, 15))
+
+    twenty_yr_kr = KeyRate(day_count_convention='act/act',
+                           key_rate_date=date(2043, 2, 15),
+                           prior_key_rate_date=date(2033, 2, 15),
+                           next_key_rate_date=date(2053, 2, 15))
+
+    thirty_yr_kr = KeyRate(day_count_convention='act/act',
+                           key_rate_date=date(2053, 2, 15),
+                           prior_key_rate_date=date(2043, 2, 15),
+                           next_key_rate_date=None)
+
+    key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,
+                     thirty_yr_kr]
+    kr_collection = KeyRateCollection(key_rate_list)
+
+    yield_curve.plot(adjustment=kr_collection)
 
     yield_curve.plot_price_curve(thirty_yr)
 
@@ -35,12 +73,15 @@ def main(bond_collection, curve_factory) -> None:
     print("Convexity values are...")
     print(convexities)
 
-    #-------------------------------------------------------------------------
-    # Opening Treasury website
+    #----------------------------------------------------------------
+    # Key Rate DV01s
 
-    web_scraper = WebScraper()
+    dv01s = yield_curve.calculate_dv01s(ten_yr, kr_collection)
+    print("Key rate DV01s...")
+    print(dv01s)
 
-    print(web_scraper.get_url())
+
+
 
 
 
