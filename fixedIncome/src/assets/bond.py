@@ -19,6 +19,7 @@ class Bond(object):
                  tenor: str,
                  purchase_date: datetime.date,
                  maturity_date: datetime.date,
+                 cusip: Optional[str] = None,
                  settlement_convention: str = 'T+1',
                  payment_frequency: str = 'semi-annual',
                  day_count_convention: str = 'act/act',
@@ -41,6 +42,7 @@ class Bond(object):
         self.principal = principal
         self.tenor = tenor
         self.purchase_date = purchase_date
+        self.cusip = cusip
         self.settlement_convention = settlement_convention
         self.payment_frequency = payment_frequency
         self.maturity_date = maturity_date

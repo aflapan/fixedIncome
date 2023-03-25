@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import functools
 import bisect
 from datetime import date
 from typing import Optional, Callable, Union, Iterable
+from functools import singledispatchmethod
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
@@ -25,12 +27,26 @@ class KeyRate:
                              f"the yield curve, and a prior_key_rate for the last key rate on the yield curve."
                              )
 
-        self.key_rate_date = key_rate_date
-        self.prior_key_rate_date = prior_key_rate_date
-        self.next_key_rate_date = next_key_rate_date
+        self.__key_rate_date = key_rate_date
+        self.__prior_key_rate_date = prior_key_rate_date
+        self.__next_key_rate_date = next_key_rate_date
         self.adjustment_fxcn = self.create_adjustment_function()
-        self.day_count_convention = day_count_convention
+        self.__day_count_convention = day_count_convention
 
+    @property
+    def key_rate_date(self):
+        return self.__key_rate_date
+    @property
+    def prior_key_rate_date(self):
+        return self.__prior_key_rate_date
+
+    @property
+    def next_key_rate_date(self):
+        return self.__next_key_rate_date
+
+    @property
+    def day_count_convention(self):
+        return self.__day_count_convention
 
     def __eq__(self, other: KeyRate) -> bool:
         """
@@ -229,7 +245,8 @@ class KeyRateCollection:
         return key_rate_obj
 
     def __iter__(self):
-        return self
+        """ Implements iteration through the KeyRateCollection by returning a generator for the KeyRate objects. """
+        return (key_rate for key_rate in self.key_rates)
 
     def __eq__(self, other: KeyRateCollection) -> bool:
         """
@@ -262,6 +279,7 @@ class KeyRateCollection:
 
         else:
             raise TypeError(f'Type {other.__class__} cannot be added to KeyRateCollection.')
+
 
     def _add_key_rate_collection(self, other_collection: KeyRateCollection) -> KeyRateCollection:
         """

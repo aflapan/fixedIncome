@@ -80,6 +80,8 @@ def main(bond_collection, curve_factory) -> None:
     print("Key rate DV01s...")
     print(dv01s)
 
+    print(format(kr_collection))
+
 
 
 

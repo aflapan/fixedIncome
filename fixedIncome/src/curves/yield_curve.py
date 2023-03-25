@@ -283,6 +283,7 @@ class YieldCurve(object):
     def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
         """
         Computes the dv01s of the bond with respect to each KeyRate in the KeyRateCollection.
+        Returns a list of HedgeRatios.
         """
 
         dv01_list = [self.dv01(bond, key_rate) for key_rate in key_rate_collection]
@@ -291,10 +292,10 @@ class YieldCurve(object):
 
         hedge_ratios = [dv01/sum_of_dv01s for dv01 in dv01_list]
 
-        key_rate_dates = [kr.key_rate_date for kr in key_rate_collection]  # iteration broken here
+        key_rate_dates = [kr.key_rate_date for kr in key_rate_collection]
 
-        return [HedgeRatio(dv01, hedge_ratios, key_rate_date) for
-                (dv01, hedge_ratios, key_rate_date) in zip(dv01_list, hedge_ratios, key_rate_dates)]
+        return [HedgeRatio(dv01, hedge_ratio, key_rate_date) for
+                (dv01, hedge_ratio, key_rate_date) in zip(dv01_list, hedge_ratios, key_rate_dates)]
 
 
     #----------------------------------------------------------------
