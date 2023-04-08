@@ -249,13 +249,13 @@ class YieldCurve(object):
         -1/P * dP/dy where P is the bond price.
         """
         derivative = self.calculate_pv_deriv(bond)
-        present_value = self.calculate_present_value(bond)  # should I calculate present value or can I just use price?
+        present_value = self.calculate_present_value(bond)
         return -derivative/present_value
 
     def convexity(self, bond: Bond) -> float:
         """
-        calculate the convexity of a bond, defined as
-        C: = 1/P * d^2 P/d^2y
+        calculate the convexity of a bond, defined as C := 1/P * d^2 P/d^2y
+        Reference: Tuckman and Serrat, 4th ed. equation (4.14).
         """
 
         derivative_positive_bump = self.calculate_pv_deriv(bond, offset=0.005)
@@ -267,7 +267,7 @@ class YieldCurve(object):
 
     def dv01(self, bond: Bond, adjustment: KeyRate) -> float:
         """
-        Calculates the DV01 with respect to a KeyRate. Returns a float.
+        Calculates the DV01 with respect to a KeyRate.
         """
 
         adjustment.create_adjustment_function()  # creates the default adjustment function with 1 bp movement

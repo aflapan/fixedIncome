@@ -1,5 +1,5 @@
 """
-Unit tests for the day_count_calculator
+Unit tests for the DayCountCalculator class in day_count_calculator.py
 """
 from datetime import date
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator

@@ -16,42 +16,42 @@ def main(bond_collection, curve_factory) -> None:
 
     four_wk_kr = KeyRate(day_count_convention='act/act',
                          key_rate_date=date(2023, 3, 28),
-                         prior_key_rate_date=None,
+                         prior_date=None,
                          next_key_rate_date=date(2024, 2, 22))
 
     one_yr_kr = KeyRate(day_count_convention='act/act',
                         key_rate_date=date(2024, 2, 22),
-                        prior_key_rate_date=date(2023, 3, 28),
+                        prior_date=date(2023, 3, 28),
                         next_key_rate_date=date(2025, 2, 28))
 
     two_yr_kr = KeyRate(day_count_convention='act/act',
                         key_rate_date=date(2025, 2, 28),
-                        prior_key_rate_date=date(2024, 2, 22),
+                        prior_date=date(2024, 2, 22),
                         next_key_rate_date=date(2026, 2, 15))
 
     three_year_kr = KeyRate(day_count_convention='act/act',
                             key_rate_date=date(2026, 2, 15),
-                            prior_key_rate_date=date(2025, 2, 28),
+                            prior_date=date(2025, 2, 28),
                             next_key_rate_date=date(2030, 2, 28))
 
     seven_yr_kr = KeyRate(day_count_convention='act/act',
                           key_rate_date=date(2030, 2, 28),
-                          prior_key_rate_date=date(2026, 2, 15),
+                          prior_date=date(2026, 2, 15),
                           next_key_rate_date=date(2033, 2, 15))
 
     ten_yr_kr = KeyRate(day_count_convention='act/act',
                         key_rate_date=date(2033, 2, 15),
-                        prior_key_rate_date=date(2030, 2, 28),
+                        prior_date=date(2030, 2, 28),
                         next_key_rate_date=date(2043, 2, 15))
 
     twenty_yr_kr = KeyRate(day_count_convention='act/act',
                            key_rate_date=date(2043, 2, 15),
-                           prior_key_rate_date=date(2033, 2, 15),
+                           prior_date=date(2033, 2, 15),
                            next_key_rate_date=date(2053, 2, 15))
 
     thirty_yr_kr = KeyRate(day_count_convention='act/act',
                            key_rate_date=date(2053, 2, 15),
-                           prior_key_rate_date=date(2043, 2, 15),
+                           prior_date=date(2043, 2, 15),
                            next_key_rate_date=None)
 
     key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,

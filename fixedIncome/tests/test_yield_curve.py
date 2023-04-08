@@ -125,12 +125,12 @@ def test_bond_pv_does_not_change_for_key_rate_beyond_maturity():
 
     twenty_yr_kr = KeyRate(day_count_convention='act/act',
                            key_rate_date=datetime.date(2043, 2, 15),
-                           prior_key_rate_date=datetime.date(2033, 2, 15),
+                           prior_date=datetime.date(2033, 2, 15),
                            next_key_rate_date=datetime.date(2053, 2, 15))
 
     thirty_yr_kr = KeyRate(day_count_convention='act/act',
                            key_rate_date=datetime.date(2053, 2, 15),
-                           prior_key_rate_date=datetime.date(2043, 2, 15),
+                           prior_date=datetime.date(2043, 2, 15),
                            next_key_rate_date=None)
 
     pass_thresh = 1e-8
@@ -138,12 +138,5 @@ def test_bond_pv_does_not_change_for_key_rate_beyond_maturity():
     thirty_yr_key_rate_dv01 = yield_curve.dv01(ten_yr, thirty_yr_kr)
 
     assert abs(twenty_yr_key_rate_dv01) < pass_thresh and abs(thirty_yr_key_rate_dv01) < pass_thresh
-
-
-
-def test_yield_curve_factory_connected_to_fed_auction_website() -> None:
-
-    assert curve_factory_obj.read_data_from_auction_website()
-
 
 

@@ -7,6 +7,7 @@ from copy import deepcopy
 import datetime
 
 import pandas as pd  # type: ignore
+import pytest
 
 from fixedIncome.src.assets.bond import Bond
 from fixedIncome.src.curves.yield_curve import YieldCurve, YieldCurveFactory
@@ -19,43 +20,43 @@ purchase_date = datetime.date(2023, 2, 27)
 
 four_wk_kr = KeyRate(day_count_convention='act/act',
                      key_rate_date=datetime.date(2023, 3, 28),
-                     prior_key_rate_date=None,
+                     prior_date=None,
                      next_key_rate_date=datetime.date(2024, 2, 22))
 
 
 one_yr_kr = KeyRate(day_count_convention='act/act',
                     key_rate_date=datetime.date(2024, 2, 22),
-                    prior_key_rate_date=datetime.date(2023, 3, 28),
+                    prior_date=datetime.date(2023, 3, 28),
                     next_key_rate_date=datetime.date(2025, 2, 28))
 
 two_yr_kr = KeyRate(day_count_convention='act/act',
                     key_rate_date=datetime.date(2025, 2, 28),
-                    prior_key_rate_date=datetime.date(2024, 2, 22),
+                    prior_date=datetime.date(2024, 2, 22),
                     next_key_rate_date=datetime.date(2026, 2, 15))
 
 three_year_kr = KeyRate(day_count_convention='act/act',
                         key_rate_date=datetime.date(2026, 2, 15),
-                        prior_key_rate_date=datetime.date(2025, 2, 28),
+                        prior_date=datetime.date(2025, 2, 28),
                         next_key_rate_date=datetime.date(2030, 2, 28))
 
 seven_yr_kr = KeyRate(day_count_convention='act/act',
                       key_rate_date=datetime.date(2030, 2, 28),
-                      prior_key_rate_date=datetime.date(2026, 2, 15),
+                      prior_date=datetime.date(2026, 2, 15),
                       next_key_rate_date=datetime.date(2033, 2, 15))
 
 ten_yr_kr = KeyRate(day_count_convention='act/act',
                     key_rate_date=datetime.date(2033, 2, 15),
-                    prior_key_rate_date=datetime.date(2030, 2, 28),
+                    prior_date=datetime.date(2030, 2, 28),
                     next_key_rate_date=datetime.date(2043, 2, 15))
 
 twenty_yr_kr = KeyRate(day_count_convention='act/act',
                        key_rate_date=datetime.date(2043, 2, 15),
-                       prior_key_rate_date=datetime.date(2033, 2, 15),
+                       prior_date=datetime.date(2033, 2, 15),
                        next_key_rate_date=datetime.date(2053, 2, 15))
 
 thirty_yr_kr = KeyRate(day_count_convention='act/act',
                        key_rate_date=datetime.date(2053, 2, 15),
-                       prior_key_rate_date=datetime.date(2043, 2, 15),
+                       prior_date=datetime.date(2043, 2, 15),
                        next_key_rate_date=None)
 
 
@@ -66,11 +67,28 @@ kr_collection = KeyRateCollection(key_rate_list)
 
 def test_KeyRate_equality():
     """
-    Tests the equality of key rates,
+    Tests the equality of key rates by comparing a collection with a deepcopy of itself.
+    Want to compare all dates in the collection and return True. We do not want
+    to compare the memory locations.
     """
 
     copy_of_key_rate_list = deepcopy(key_rate_list)
     assert(copy_of_key_rate_list == key_rate_list)
+
+def test_KeyRate_TypeError_calling():
+    """
+    Tests that the KeyRate object throws the correct type error
+    when called with a float rather than a datetime.date object.
+    """
+    input = 1.0  # a float
+    expected_err_str = f'Object {input} could not be passed into the objective function, ' \
+                       f'which requires a datetime.date object.'
+
+    with pytest.raises(Exception) as exc_info:
+        three_year_kr(input)  # try, except handled in the __callable__ method
+
+    assert exc_info.value.args[0] == expected_err_str
+
 
 
 def test_KeyRateCollection_iterator():
@@ -193,9 +211,36 @@ def test_KeyRateCollection_addition_with_KeyRate_gives_collection():
     """
 
     (first_kr, *rest_kr) = key_rate_list
-
     rest_kr_collection = KeyRateCollection(rest_kr)
-
     sum_collection = rest_kr_collection + first_kr
 
     assert sum_collection == kr_collection
+
+def test_KeyRateCollection_slicing__returns_KeyRateCollection():
+    """
+    Tests if slicing a KeyRateCollection returns another
+    instance of a KeyRateCollection.
+    """
+
+    sliced_kr_collection = kr_collection[0:3]
+    assert isinstance(sliced_kr_collection, KeyRateCollection)
+
+def test_KeyRateCollection_single_index_gives_KeyRate():
+    """
+    Tests if indexing the KeyRateCollection by a single indexer returns a KeyRate object.
+    """
+    num_key_rates = len(kr_collection)
+    is_key_rate = []
+
+    for index in range(num_key_rates):  # Want to index collection, will test iteration separately.
+        is_key_rate.append(isinstance(kr_collection[index], KeyRate))
+
+    assert all(is_key_rate)
+
+def test_delitem_dunder_method_for_KeyRateCollection():
+    """
+    Tests if deleting objects by index from the KeyRateCollection.
+    """
+
+
+
