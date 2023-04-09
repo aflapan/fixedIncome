@@ -14,25 +14,23 @@ class KeyRate:
     """
     Instantiates a KeyRate object.
     """
+    __bump_val: float = 0.01  # Rate amount ion percent (%) used to create adjustment
+                            # functions for key rate bump functions.
+                            # Default value is 1 bp, or 0.01%.
+
+    __adjustment_fxcn: Callable[[date], float] = None
 
     def __init__(self,
                  day_count_convention: str,
                  key_rate_date: date,
                  prior_date: Optional[date] = None,
-                 next_key_rate_date: Optional[date] = None) -> None:
-
-        if (prior_date is None) and (next_key_rate_date is None):
-            raise ValueError(f"Provided prior_date and next_key_rate_date are both None Type. "
-                             f"Please provide a both a prior_key_rate_date and an next_key_rate_date for any key "
-                             f"rate in the middle of the yield curve, a next_key_rate_date for the first key rate on " 
-                             f"the yield curve, and a prior_key_rate for the last key rate on the yield curve."
-                             )
+                 next_date: Optional[date] = None) -> None:
 
         self.__key_rate_date = key_rate_date
         self.__prior_date = prior_date
-        self.__next_key_rate_date = next_key_rate_date
-        self.__adjustment_fxcn = self.create_adjustment_function()  # uses default 1 bp bump
+        self.__next_date = next_date
         self.__day_count_convention = day_count_convention
+        self.create_adjustment_function()  # uses default 1 bp bump
 
     @property
     def key_rate_date(self):
@@ -43,7 +41,7 @@ class KeyRate:
 
     @property
     def next_key_rate_date(self):
-        return self.__next_key_rate_date
+        return self.__next_date
 
     @property
     def day_count_convention(self):
@@ -52,17 +50,22 @@ class KeyRate:
     @property
     def adjustment_fxcn(self):
         return self.__adjustment_fxcn
+
+    @property
+    def bump_val(self):
+        return self.__bump_val
+
+
     def __eq__(self, other: KeyRate) -> bool:
         """
-        Implements equality of key rates based day count convention, key rate dates, prior dates,
-        and following dates.
+        Implements equality of key rates based day count convention and key rate dates.
+        Previous date and following date, along with the adjustment function,
+        are subject to change. Thus, these are not used for comparison.
         """
         day_count_conventions_equal = self.day_count_convention == other.day_count_convention
         key_rate_dates_equal = self.key_rate_date == other.key_rate_date
-        next_date_equal = self.next_key_rate_date == other.next_key_rate_date
-        prior_date_equal = self.prior_date == other.prior_date
 
-        all_equal = day_count_conventions_equal and key_rate_dates_equal and next_date_equal and prior_date_equal
+        all_equal = day_count_conventions_equal and key_rate_dates_equal
         return all_equal
 
     def __le__(self, other: KeyRate) -> bool:
@@ -100,32 +103,81 @@ class KeyRate:
                             f'Using callable feature requires a datetime.date object.')
 
     def __hash__(self):
-        """ Implements a hash based on immutable attributes."""
-        attribute_tuple = (self.day_count_convention,
-                           self.key_rate_date,
-                           self.prior_date,
-                           self.next_key_rate_date)
+        """
+        Implements a hash based on immutable attributes day count convention and the
+        key rate date. Prior, and next days are mutable, and so are not used in the construction
+        of the has.
+        """
+        attribute_tuple = (self.day_count_convention, self.key_rate_date)
 
         return hash(attribute_tuple)
 
     #-------------------------------------------------------------------
     # Functionality for creating bump functions
-    def create_adjustment_function(self, bump_amount: float = 0.01):
-        """
-        returns a function corresponding to the key rate bump.
 
-        bump_amount is a float corresponding to the key rate bump of the yield in percent (%).
-        Default value is a basis point, or 0.01%.
+    def set_bump_val(self, new_bump_val: Optional[float] = None) -> None:
+        """
+        Setter method for bump value amount used in adjustment function.
+        Sets the value and then re-constructs the adjustment function
+        """
+        self.__bump_val = new_bump_val
+        self.create_adjustment_function()
+
+    def set_prior_date(self, new_prior_date: Optional[date] = None) -> None:
+        """
+        Setter method to change the prior date for the KeyRateObject which also automatically makes
+        the appropriate change to the adjustment function.
+
+        If the prior date is set to None, then the adjustment function is constant at the bump_level
+        for all dates less-than-or-equal-to the key rate date.
+
+        If the prior date is set to some value strictly less than the key rate date, then the adjustment
+        function is set to interpolation between 0 at the prior date and the current bump value at
+        the key rate date.
+
+        If the prior date is set to some value at or greater than the key rate date, ValueError is raised.
+        """
+        if self.key_rate_date <= new_prior_date:
+            raise ValueError('Prior date cannot be at or after key rate date.')
+
+        self.__prior_date = new_prior_date
+        self.create_adjustment_function()
+
+    def set_next_date(self, new_next_date: Optional[date] = None) -> None:
+        """
+        Setter method to change the next date for the KeyRateObject which also automatically makes
+        the appropriate change to the adjustment function.
+
+        If the next date is set to None, then the adjustment function is constant at the bump_level
+        for all dates greater-than-or-equal-to the key rate date.
+
+        If the next date is set to some value strictly greater than the key rate date, then the adjustment
+        function is set to interpolation between bump_val at the key rate date and 0 at
+        the next date.
+
+        If the next date is set to some value at or less-than the key rate date, ValueError is raised.
+        """
+        if new_next_date <= self.key_rate_date:
+            raise ValueError('Next date cannot be at or before key rate date.')
+
+        self.__next_date = new_next_date
+        self.create_adjustment_function()
+
+    def create_adjustment_function(self) -> None:
+        """
+        Creates a adjustment function corresponding to key rate bump function
+        using the self.__bump_val, self.__prior_date, self.__key_rate_date, self.__next_date, and
+        interpolated between dates using the self.__day_count_convention.
         """
 
         match (self.prior_date, self.key_rate_date, self.next_key_rate_date):
 
-            case (None, middle, following): # first key rate
+            case (None, middle, following):  # first key rate
 
                 def adjustment_fxcn(input_date: date) -> float:
 
                     if input_date <= middle:
-                        return bump_amount
+                        return self.bump_val
 
                     elif input_date >= following:
                         return 0.0
@@ -139,11 +191,11 @@ class KeyRate:
                             middle, following, self.day_count_convention
                         )
 
-                        return bump_amount * (time_to_next / total_length)
+                        return self.bump_val * (time_to_next / total_length)
 
-            case (previous, middle, None): # last key rate
+            case (previous, middle, None):  # last key rate
 
-                def adjustment_fxcn(input_date: date) -> float :
+                def adjustment_fxcn(input_date: date) -> float:
                     if input_date >= middle:
                         return bump_amount
 
@@ -158,9 +210,9 @@ class KeyRate:
                             previous, middle, self.day_count_convention
                         )
 
-                        return (time_to_previous / total_length) * bump_amount
+                        return (time_to_previous / total_length) * self.bump_val
 
-            case (previous, middle, following): # one of the middle key rates
+            case (previous, middle, following):  # one of the middle key rates
 
                 def adjustment_fxcn(input_date: date) -> float:
 
@@ -177,7 +229,7 @@ class KeyRate:
                             previous, middle, self.day_count_convention
                         )
 
-                        return (time_since_prior / total_time) * bump_amount
+                        return (time_since_prior / total_time) * self.bump_val
 
                     else:
                         time_to_next = DayCountCalculator.compute_accrual_length(
@@ -188,22 +240,19 @@ class KeyRate:
                             middle, following, self.day_count_convention
                         )
 
-                        return (time_to_next / total_time) * bump_amount
+                        return (time_to_next / total_time) * self.bump_val
+
+            case (None, middle, None):  # only key rate
+                def adjustment_fxcn(input_date: date) -> float:
+                    return self.bump_val
 
             case _:
                 raise ValueError(f'Case ({self.prior_date}, {self.key_rate_date}, {self.next_key_rate_date})'
                                  f' not matched in call to self.create_bump_function method.')
 
-        return adjustment_fxcn
+        self.__adjustment_fxcn = adjustment_fxcn
 
-    def set_adjustment_level(self, bump: float) -> None:
-        """
-        Setter method for bump key rate adjustment. Creates a new adjustment function which
-        triangulates from 0, to the provided bump amount, back to 0.
 
-        Sets this new function as the objects adjustment function.
-        """
-        self.__adjustment_fxcn = self.create_adjustment_function(bump_amount=bump)
 
 
 
