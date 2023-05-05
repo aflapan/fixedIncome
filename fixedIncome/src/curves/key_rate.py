@@ -14,9 +14,9 @@ class KeyRate:
     """
     Instantiates a KeyRate object.
     """
-    __bump_val: float = 0.01  # Rate amount ion percent (%) used to create adjustment
-                            # functions for key rate bump functions.
-                            # Default value is 1 bp, or 0.01%.
+    __bump_val: float = 0.01  # Rate amount in percent (%) used to create adjustment
+                              # functions for key rate bump functions.
+                              # Default value is 1 bp, or 0.01%.
 
     __adjustment_fxcn: Callable[[date], float] = None
 
@@ -137,7 +137,7 @@ class KeyRate:
 
         If the prior date is set to some value at or greater than the key rate date, ValueError is raised.
         """
-        if self.key_rate_date <= new_prior_date:
+        if new_prior_date is not None and self.key_rate_date <= new_prior_date:
             raise ValueError('Prior date cannot be at or after key rate date.')
 
         self.__prior_date = new_prior_date
@@ -157,7 +157,7 @@ class KeyRate:
 
         If the next date is set to some value at or less-than the key rate date, ValueError is raised.
         """
-        if new_next_date <= self.key_rate_date:
+        if new_next_date is not None and new_next_date <= self.key_rate_date:
             raise ValueError('Next date cannot be at or before key rate date.')
 
         self.__next_date = new_next_date
@@ -197,7 +197,7 @@ class KeyRate:
 
                 def adjustment_fxcn(input_date: date) -> float:
                     if input_date >= middle:
-                        return bump_amount
+                        return self.bump_val
 
                     elif input_date <= previous:
                         return 0.0
@@ -254,8 +254,6 @@ class KeyRate:
 
 
 
-
-
 class KeyRateCollection(MutableSequence):
     """
     An ordered sequence-type object containing a collection of key rates
@@ -263,27 +261,29 @@ class KeyRateCollection(MutableSequence):
     functions for each KeyRate object in the collection.
     """
 
+    __adjustment_fxcn: Optional[Callable[[date], float]] = None
+
     def __init__(self, key_rates: Iterable[KeyRate]) -> None:
         """ Instantiates a KeyRateCollection object. """
         self.iter_index = 0
         self.key_rates = sorted(list(key_rates))  # Sorts based on key_rate_date for each KeyRate object
-        self.compatible = self._test_key_rate_dates()
-
-        if not self.compatible:
-            raise ValueError
-
-        self.__adjustment_fxcn = self._create_combined_adjustment_function()
+        self._set_dates_in_collection()
+        self._create_combined_adjustment_function()
 
     @property
     def adjustment_fxcn(self):
         return self.__adjustment_fxcn
 
-    def __call__(self, date_val: date) -> float:
+    def __call__(self, date_obj: date) -> float:
         """ Shortcut to calling the adjustment function by calling the KeyRateCollection object directly. """
-        return self.adjustment_fxcn(date_val)
+        try:
+            return self.adjustment_fxcn(date_obj)
+        except TypeError:
+            raise TypeError(f'Object {date_obj} could not be passed into the adjustment function.'
+                            f'Using callable feature requires a datetime.date object.')
 
     def __getitem__(self, key):
-        """  Retrieves a KeyRate object from the collection. """
+        """  Retrieves a KeyRateCollection or KeyRate object from the collection via indexing. """
         if isinstance(key, slice):
             cls = type(self)
             return cls(self.key_rates[key])
@@ -291,11 +291,49 @@ class KeyRateCollection(MutableSequence):
         index = operator.index(key)
         return self.key_rates[index]
 
-    def __setitem__(self, key: int, value: KeyRate):
+    def __setitem__(self, key: int, new_key_rate: KeyRate):
         """
-        places a new KeyRateObject
+        Places a new KeyRateObject at an index value. Checks if the new
+        the prior and next date interval
         """
-        pass
+
+        match self[key].prior_date, self[key].next_key_rate_date:  # assumed to align with the
+                                                                   # previous and next key_rate dates
+
+            case prior_date, next_date:  # one of the middle key rate indices
+                if prior_date < new_key_rate.key_rate_date < next_date:
+                    self.key_rates[key] = new_key_rate
+                else:
+                    raise ValueError(f'New key_rate date {new_key_rate.key_rate_date} is not strictly within '
+                                     f'interval {prior_date} and {next_date}.')
+
+            case None, next_date:  # first key rate index
+                if new_key_rate.key_rate_date < next_date:
+                    self.key_rates[key] = new_key_rate
+                else:
+                    raise ValueError(f'New key_rate date {new_key_rate.key_rate_date} is not '
+                                     f'strictly less than {next_date} when new KeyRate object would be '
+                                     f'first in the collection.')
+
+
+            case prior_date, None:  # last key rate index
+                if new_key_rate.key_rate_date > prior_date:
+                    self.key_rates[key] = new_key_rate
+                else:
+                    raise ValueError(f'New key_rate date {new_key_rate.key_rate_date} is not '
+                                     f'strictly greater than {prior_date} when new KeyRate object would be '
+                                     f'last in the collection.')
+
+            case None, None:  # only key rate in collection
+                try:
+                    self.key_rates[key] = new_key_rate
+                except IndexError:
+                    raise IndexError(f'Failed to set new_key_rate at index {key}.')
+
+            case _:
+                raise ValueError(f'New key rate object {new_key_rate} could not be set at index {key}.')
+
+        self._set_dates_in_collection()
 
     def __delitem__(self, key):
         """
@@ -303,9 +341,10 @@ class KeyRateCollection(MutableSequence):
         function with the remaining KeyRate objects in collection.
         """
         del self.key_rates[key]
+        self._create_combined_adjustment_function()
 
-
-        self.__adjustment_fxcn = self._create_combined_adjustment_function()
+    def insert(self, new_key_rate_object: KeyRate) -> None:  # required for subclassing MutableSequence ABC
+        """ Puts a Key Rate at the location specified by the"""
 
 
 
@@ -315,7 +354,7 @@ class KeyRateCollection(MutableSequence):
 
     def __bool__(self):
         """ Truthy if the list of KeyRates is non-empty and valid (as determined by _test_key_rate_collection). """
-        return bool(self.key_rates) and self.compatible
+        return bool(self.key_rates)
 
     def __next__(self):
         """
@@ -371,7 +410,7 @@ class KeyRateCollection(MutableSequence):
     def _add_key_rate_collection(self, other_collection: KeyRateCollection) -> KeyRateCollection:
         """
         Private method for adding two KeyRateCollection objects together. Combines the two
-        KeyRate seqyences together and forms a
+        KeyRate sequences together and forms a new KeyRateCollection object.
         """
 
         try:
@@ -395,71 +434,59 @@ class KeyRateCollection(MutableSequence):
         """
 
         bisect.insort_right(self.key_rates, other_key_rate)
-        self._test_key_rate_dates()
         self._create_combined_adjustment_function()  # recreate adjustment function with new KeyRate included
 
         return self
 
-
     #------------------------------------------------------------------------
+    # Combined Adjustment
 
-    def _test_key_rate_dates(self) -> bool:
+    def _set_dates_in_collection(self) -> None:
         """
-        Tests whether the key rate dates provided are compatible with each other.
-        Compatibility means that, when sorted, the key rates satisfy the following criteria:
-
-        (1) Prior Date Compatibility: for any key rate, the key rate date is before or equal to the
-            subsequent key rate's prior key rate date.
-
-        (2) Following date compatibility: Each key rate's following date is before or equal to the
-            subsequent key rate's key rate date.
-
-        (3) If a key rate's following date is strictly before the subsequent key rate's key rate date,
-            then it's following date must be before or equal to the subsequent key rate's prior date.
-            Otherwise, it is impossible to insert a key rate between them to form a parallel shift.
-
-        If conditions (1), (2), and (3) hold for all but the last key rate (which is an end key rate, so by default
-        the conditions hold), then the collection is said to be compatible.
-
-        Note: we do not assume that, for a given key rate, its following date must exactly equal the
-        subsequent key rate's key rate date.
+        A helper function to set the prior and next dates for each KeyRate object in the collection so that:
+        (1) For each KeyRate object, the prior date is equal to the previous key rate object's key_rate date if
+            a previous KeyRate object exists, otherwise None.
+        (2) For each KeyRate object, the next date is equal to the next key rate object's key_rate date if
+            a subsequent KeyRate object exists, otherwise None.
         """
-        key_rates_compatible: bool = True
 
-        for kr_index, key_rate in enumerate(self.key_rates[:-1]):  # no need to check last Key Rate.
-            # Last key rate does not have subsequent key rate to check compatibility with.
+        if len(self) > 1:  # two or more key rates in the collection
 
-            prior_date_compatibility = key_rate.key_rate_date <= self.key_rates[kr_index+1].prior_date
-            following_date_compatibility = key_rate.next_key_rate_date <= self.key_rates[kr_index+1].key_rate_date
+            for key, key_rate in enumerate(self.key_rates):
+                # Set prior and next dates to align with all other key rates in collection
 
-            following_before_next_prior = True
+                if key == 0:  # first KeyRate object
+                    key_rate.set_prior_date(None)
+                    key_rate.set_next_date(self[key + 1].key_rate_date)
 
-            if key_rate.next_key_rate_date < self.key_rates[kr_index+1].key_rate_date:  # only applies with <
-                # Used because otherwise one could not insert a key rate between key_rate and the subsequent
-                # one which would yield a parallel shift when summing all functions.
-                following_before_next_prior = key_rate.next_key_rate_date <= self.key_rates[kr_index+1].prior_date
+                elif key == (len(self.key_rates) - 1):  # last KeyRate object
+                    key_rate.set_next_date(None)
+                    key_rate.set_prior_date(self[key - 1].prior_date)
 
-            compatibility_flag = prior_date_compatibility and following_date_compatibility and following_before_next_prior
-            key_rates_compatible = key_rates_compatible and compatibility_flag
+                else:  # the scenario of exactly two key rates is implicitly handled by the above 2 cases
+                    key_rate.set_prior_date(self[key - 1].prior_date)
+                    key_rate.set_next_date(self[key + 1].key_rate_date)
 
-            if not key_rates_compatible:
-                print(f'Key Rates {key_rate} and {self.key_rates[kr_index+1]} are incompatible.')
-                return False
+                key_rate.create_adjustment_function()
 
-        return key_rates_compatible
+        elif len(self) == 1:  # One key rate in the collection
+            only_key_rate = self[0]
+            only_key_rate.set_prior_date(None)
+            only_key_rate.set_next_date(None)
+            only_key_rate.create_adjustment_function()
 
+        else:
+            raise ValueError('Cannot create a combined adjustment function for an empty KeyRateCollection.')
 
-    #------------------------------------------------------------------------
-
-
-    def _create_combined_adjustment_function(self) -> Callable[[date], float]:
+    def _create_combined_adjustment_function(self) -> None:
         """ creates a key rate adjustment function for the KeyRateCollection object
         by summing the individual key rate adjustment function evaluations."""
 
+        self._set_dates_in_collection()
         def combined_adjustment_fxcn(date_val: date) -> float:
             return sum(key_rate(date_val) for key_rate in self.key_rates)
 
-        return combined_adjustment_fxcn
+        self.__adjustment_fxcn = combined_adjustment_fxcn
 
 
 
