@@ -40,7 +40,7 @@ class KeyRate:
         return self.__prior_date
 
     @property
-    def next_key_rate_date(self):
+    def next_date(self):
         return self.__next_date
 
     @property
@@ -99,7 +99,7 @@ class KeyRate:
         try:
             return self.adjustment_fxcn(date_obj)
         except TypeError:
-            raise TypeError(f'Object {date_obj} could not be passed into the adjustment function.'
+            raise TypeError(f'Object {date_obj!r} could not be passed into the adjustment function. '
                             f'Using callable feature requires a datetime.date object.')
 
     def __hash__(self):
@@ -170,7 +170,7 @@ class KeyRate:
         interpolated between dates using the self.__day_count_convention.
         """
 
-        match (self.prior_date, self.key_rate_date, self.next_key_rate_date):
+        match (self.prior_date, self.key_rate_date, self.next_date):
 
             case (None, middle, following):  # first key rate
 
@@ -247,7 +247,7 @@ class KeyRate:
                     return self.bump_val
 
             case _:
-                raise ValueError(f'Case ({self.prior_date}, {self.key_rate_date}, {self.next_key_rate_date})'
+                raise ValueError(f'Case ({self.prior_date}, {self.key_rate_date}, {self.next_date})'
                                  f' not matched in call to self.create_bump_function method.')
 
         self.__adjustment_fxcn = adjustment_fxcn
@@ -279,7 +279,7 @@ class KeyRateCollection(MutableSequence):
         try:
             return self.adjustment_fxcn(date_obj)
         except TypeError:
-            raise TypeError(f'Object {date_obj} could not be passed into the adjustment function.'
+            raise TypeError(f'Object {date_obj!r} could not be passed into the adjustment function. '
                             f'Using callable feature requires a datetime.date object.')
 
     def __getitem__(self, key):
@@ -297,7 +297,7 @@ class KeyRateCollection(MutableSequence):
         the prior and next date interval
         """
 
-        match self[key].prior_date, self[key].next_key_rate_date:  # assumed to align with the
+        match self[key].prior_date, self[key].next_date:  # assumed to align with the
                                                                    # previous and next key_rate dates
 
             case prior_date, next_date:  # one of the middle key rate indices
@@ -461,10 +461,10 @@ class KeyRateCollection(MutableSequence):
 
                 elif key == (len(self.key_rates) - 1):  # last KeyRate object
                     key_rate.set_next_date(None)
-                    key_rate.set_prior_date(self[key - 1].prior_date)
+                    key_rate.set_prior_date(self[key - 1].key_rate_date)
 
                 else:  # the scenario of exactly two key rates is implicitly handled by the above 2 cases
-                    key_rate.set_prior_date(self[key - 1].prior_date)
+                    key_rate.set_prior_date(self[key - 1].key_rate_date)
                     key_rate.set_next_date(self[key + 1].key_rate_date)
 
                 key_rate.create_adjustment_function()
@@ -484,7 +484,7 @@ class KeyRateCollection(MutableSequence):
 
         self._set_dates_in_collection()
         def combined_adjustment_fxcn(date_val: date) -> float:
-            return sum(key_rate(date_val) for key_rate in self.key_rates)
+            return sum(key_rate(date_val) for key_rate in self)
 
         self.__adjustment_fxcn = combined_adjustment_fxcn
 

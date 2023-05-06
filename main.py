@@ -58,6 +58,8 @@ def main(bond_collection, curve_factory) -> None:
                      thirty_yr_kr]
     kr_collection = KeyRateCollection(key_rate_list)
 
+    kr_collection._set_dates_in_collection()
+
     yield_curve.plot(adjustment=kr_collection)
 
     yield_curve.plot_price_curve(thirty_yr)

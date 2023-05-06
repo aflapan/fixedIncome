@@ -63,6 +63,8 @@ thirty_yr_kr = KeyRate(day_count_convention='act/act',
 key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr, thirty_yr_kr]
 kr_collection = KeyRateCollection(key_rate_list)
 
+PASS_THRESH = 1e-8
+
 #--------------------------------------------------------------------------
 
 def test_KeyRate_equality():
@@ -75,19 +77,42 @@ def test_KeyRate_equality():
     copy_of_key_rate_list = deepcopy(key_rate_list)
     assert(copy_of_key_rate_list == key_rate_list)
 
+
 def test_KeyRate_TypeError_calling():
     """
     Tests that the KeyRate object throws the correct type error
     when called with a float rather than a datetime.date object.
     """
     input = 1.0  # a float
-    expected_err_str = f'Object {input} could not be passed into the objective function, ' \
-                       f'which requires a datetime.date object.'
+    expected_err_str = f'Object {input!r} could not be passed into the adjustment function. ' \
+                       f'Using callable feature requires a datetime.date object.'
 
-    with pytest.raises(Exception) as exc_info:
-        three_year_kr(input)  # try, except handled in the __callable__ method
+    with pytest.raises(TypeError, match=expected_err_str):
+        three_year_kr(input)
 
-    assert exc_info.value.args[0] == expected_err_str
+
+#----------------------------------------------------------------------------
+# Testing Key Rate Collection
+
+def test_key_rate_collection_date_setting_sets_next_dates_correctly():
+    """
+    Tests that the _set_dates_in_collection() method sets all next dates
+    to equal the following key_rate object's key_rate_date.
+    """
+    kr_collection._set_dates_in_collection()
+    next_dates = [key_rate.next_date for key_rate in kr_collection]
+    key_rate_date = [key_rate.key_rate_date for key_rate in kr_collection]
+    assert all(next_date == kr_date for next_date, kr_date in zip(next_dates[:-1], key_rate_date[1:]))
+
+def test_key_rate_collection_date_setting_sets_prior_dates_correctly():
+    """
+    Tests that the _set_dates_in_collection() method sets all prior dates
+    to equal the previous key_rate object's key_rate_date.
+    """
+    kr_collection._set_dates_in_collection()
+    previous_dates = [key_rate.prior_date for key_rate in kr_collection]
+    key_rate_date = [key_rate.key_rate_date for key_rate in kr_collection]
+    assert all(prior_date == kr_date for prior_date, kr_date in zip(previous_dates[1:], key_rate_date[:-1]))
 
 
 
@@ -120,9 +145,8 @@ def test_default_KeyRate_adjustment_function_is_default_bump_at_key_rate_date():
     prior and next key rate dates if they exist (otherwise, the key rate evaluates to 1).
     """
 
-    pass_thresh = 1e-8
     interpolation_values = [kr_obj(kr_obj.key_rate_date) for kr_obj in key_rate_list]
-    assert all([abs(val - 0.01) < pass_thresh for val in interpolation_values])
+    assert all(abs(val - 0.01) < PASS_THRESH for val in interpolation_values)
 
 
 def test_left_dates_adjust_function_evaluation_for_key_rate_with_prior_None():
@@ -131,9 +155,9 @@ def test_left_dates_adjust_function_evaluation_for_key_rate_with_prior_None():
     when prior date is None.
     """
 
-    pass_thresh = 1e-8
+    four_wk_kr.set_prior_date(None)
     test_dates = pd.date_range(start=datetime.date(2000, 1, 1), end=four_wk_kr.key_rate_date)  # creates timestamps
-    assert all([abs(four_wk_kr(date.date()) - 0.01) < pass_thresh for date in test_dates])
+    assert all(abs(four_wk_kr(date.date()) - 0.01) < PASS_THRESH for date in test_dates)
 
 
 def test_right_dates_adjust_function_evaluation_for_key_rate_with_next_None():
@@ -142,9 +166,9 @@ def test_right_dates_adjust_function_evaluation_for_key_rate_with_next_None():
     when next date is None.
     """
 
-    pass_thresh = 1e-8
+    thirty_yr_kr.set_next_date(None)
     test_dates = pd.date_range(start=thirty_yr_kr.key_rate_date, end=datetime.date(2100, 1, 1))  # creates timestamps
-    assert all([abs(thirty_yr_kr(date.date()) - 0.01) < pass_thresh for date in test_dates])
+    assert all(abs(thirty_yr_kr(date.date()) - 0.01) < PASS_THRESH for date in test_dates)
 
 
 def test_KeyRateCollection_adjustment_function_is_parallel_shift():
@@ -156,23 +180,11 @@ def test_KeyRateCollection_adjustment_function_is_parallel_shift():
     all dates.
     """
 
+    kr_collection._set_dates_in_collection()
     test_dates = pd.date_range(start=datetime.date(2000, 1, 1), end=datetime.date(2100, 1, 1))
     collection_vals = (kr_collection(date_val.date()) for date_val in test_dates)
-    pass_thresh = 1e-8
-    assert all([abs(val - 0.01) < pass_thresh for val in collection_vals])
+    assert all(abs(val - 0.01) < PASS_THRESH for val in collection_vals)
 
-
-def test_KeyRateCollection_addition_makes_valid_collection():
-    """
-    Tests whether addition is implemented correctly by adding two halves of the key rate list,
-    constructed to be a valid collection, yields a valid key rate collection.
-    """
-
-    kr_collection_front = KeyRateCollection(key_rate_list[:4])
-    kr_collection_back = KeyRateCollection(key_rate_list[4:])
-    all_kr_collection = kr_collection_front + kr_collection_back
-
-    assert all_kr_collection._test_key_rate_dates()
 
 def test_KeyRateCollection_addition_of_halves_gives_collection():
     """ Tests that splitting the set of key rates, forming individual
@@ -195,12 +207,10 @@ def test_KeyRateCollection_addition_with_KeyRate_makes_valid_collection():
     """
 
     (first_kr, *rest_kr) = key_rate_list
-
     rest_kr_collection = KeyRateCollection(rest_kr)
-
     sum_collection = rest_kr_collection + first_kr
 
-    assert sum_collection._test_key_rate_dates()
+    assert sum_collection
 
 def test_KeyRateCollection_addition_with_KeyRate_gives_collection():
     """
@@ -225,22 +235,14 @@ def test_KeyRateCollection_slicing__returns_KeyRateCollection():
     sliced_kr_collection = kr_collection[0:3]
     assert isinstance(sliced_kr_collection, KeyRateCollection)
 
-def test_KeyRateCollection_single_index_gives_KeyRate():
+def test_KeyRateCollection_index_gives_KeyRate():
     """
     Tests if indexing the KeyRateCollection by a single indexer returns a KeyRate object.
     """
     num_key_rates = len(kr_collection)
-    is_key_rate = []
 
-    for index in range(num_key_rates):  # Want to index collection, will test iteration separately.
-        is_key_rate.append(isinstance(kr_collection[index], KeyRate))
-
-    assert all(is_key_rate)
-
-def test_delitem_dunder_method_for_KeyRateCollection():
-    """
-    Tests if deleting objects by index from the KeyRateCollection.
-    """
+    # Want to index collection, will test iteration separately.
+    assert all(isinstance(kr_collection[index], KeyRate) for index in range(num_key_rates))
 
 
 
