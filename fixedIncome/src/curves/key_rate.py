@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-
-from collections.abc import MutableSequence
+import copy
+from collections.abc import MutableSequence, Callable, Collection
 import operator
 import bisect
 from datetime import date
@@ -10,7 +10,7 @@ from typing import Optional, Callable, Union, Iterable
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
 
-class KeyRate:
+class KeyRate(Callable):
     """
     Instantiates a KeyRate object.
     """
@@ -54,7 +54,6 @@ class KeyRate:
     @property
     def bump_val(self):
         return self.__bump_val
-
 
     def __eq__(self, other: KeyRate) -> bool:
         """
@@ -111,6 +110,18 @@ class KeyRate:
         attribute_tuple = (self.day_count_convention, self.key_rate_date)
 
         return hash(attribute_tuple)
+
+    def __iter__(self) -> Iterable[KeyRate]:
+        """ Returns an iterable of the single key_rate_date. Used primarily for
+        adding to KeyRateDate collections.
+        """
+        return iter([self])
+
+    @classmethod
+    def toKeyRate(cls) -> KeyRate:
+        return KeyRate(cls)
+
+
 
     #-------------------------------------------------------------------
     # Functionality for creating bump functions
@@ -253,8 +264,7 @@ class KeyRate:
         self.__adjustment_fxcn = adjustment_fxcn
 
 
-
-class KeyRateCollection(MutableSequence):
+class KeyRateCollection(MutableSequence[KeyRate], Callable):
     """
     An ordered sequence-type object containing a collection of key rates
     with an adjustment function built from summing the individual adjustment
@@ -344,8 +354,9 @@ class KeyRateCollection(MutableSequence):
         self._create_combined_adjustment_function()
 
     def insert(self, new_key_rate_object: KeyRate) -> None:  # required for subclassing MutableSequence ABC
-        """ Puts a Key Rate at the location specified by the"""
+        """ Inerts a Key Rate into the collection. """
 
+        self + new_key_rate_object
 
 
     def __len__(self):
@@ -381,30 +392,23 @@ class KeyRateCollection(MutableSequence):
         """
         return self.key_rates == other.key_rates
 
-    def __add__(self, other: Union[KeyRateCollection, KeyRate]) -> KeyRateCollection:
+    def __add__(self, other: Iterable[date]) -> KeyRateCollection:
         """
-        Builds collections of keys rates by adding the current collection with another one
-        to form a new collection or by inserting a new key rate and modifying the collection
-        in place.
-        Returns a new KeyRateCollection or a reference to self.
+        Builds collections of keys rates
         """
+        try:
+            other_kr_dates = set(key_rate for key_rate in other)
+            all_kr_dates = list(set(kr_date for kr_date in self) | other_kr_dates)
+            return KeyRateCollection(all_kr_dates)
 
-        if isinstance(other, KeyRateCollection):
-            try:
-                return self._add_key_rate_collection(other_collection=other)
-            except ValueError:
-                return self
+        except:
+            return NotImplemented
 
-        elif isinstance(other, KeyRate):
-            try:
-                self._add_key_rate(other_key_rate=other)
-                return self
 
-            except ValueError:
-                return self
 
-        else:
-            raise TypeError(f'Type {other.__class__} cannot be added to KeyRateCollection.')
+    def __radd__(self, other: Union[KeyRateCollection, KeyRate]) -> KeyRateCollection:
+        """ Implements reversed addition. Delegates to __add__ """
+        return self + other
 
 
     def _add_key_rate_collection(self, other_collection: KeyRateCollection) -> KeyRateCollection:
@@ -432,11 +436,13 @@ class KeyRateCollection(MutableSequence):
         Optimized to be faster than _add_key_rate_collection, as the self is modified in place.
         Returns a reference to self.
         """
+        insert_index = bisect.bisect_right(self.key_rates, other_key_rate)
+        if self[insert_index] != other_key_rate:
+            self.key_rates.insert(insert_index, other_key_rate)
 
-        bisect.insort_right(self.key_rates, other_key_rate)
-        self._create_combined_adjustment_function()  # recreate adjustment function with new KeyRate included
+        new_key_rate_collection = KeyRateCollection(self.key_rates)
 
-        return self
+        return new_key_rate_collection
 
     #------------------------------------------------------------------------
     # Combined Adjustment
@@ -487,13 +493,6 @@ class KeyRateCollection(MutableSequence):
             return sum(key_rate(date_val) for key_rate in self)
 
         self.__adjustment_fxcn = combined_adjustment_fxcn
-
-
-
-
-
-
-
 
 
 
