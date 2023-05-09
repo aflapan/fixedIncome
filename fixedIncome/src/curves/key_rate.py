@@ -119,8 +119,8 @@ class KeyRate(Callable):
 
     @classmethod
     def toKeyRate(cls) -> KeyRate:
+        #TODO: FINISH
         return KeyRate(cls)
-
 
 
     #-------------------------------------------------------------------
@@ -392,17 +392,35 @@ class KeyRateCollection(MutableSequence[KeyRate], Callable):
         """
         return self.key_rates == other.key_rates
 
-    def __add__(self, other: Iterable[date]) -> KeyRateCollection:
+    def __add__(self, other: KeyRateCollection) -> KeyRateCollection:
         """
-        Builds collections of keys rates
+        Adds two KeyRateCollections objects together to form a new object
+        from the set union of all KeyRate objects ordered by key_Rate date.
+        Returns a new KeyRateCollection or NotImplemented.
+        """
+        if isinstance(other, KeyRateCollection):
+            other_kr_dates = set(key_rate for key_rate in other)
+            all_kr_dates = list(set(kr_date for kr_date in self) | other_kr_dates)
+            return KeyRateCollection(all_kr_dates)
+        else:
+            return NotImplemented
+
+    def __iadd__(self, other: Union[Iterable[KeyRate], KeyRate]) -> KeyRateCollection:
+        """
+        Modifies the KeyRateCollection in place by adding a Singular KeyRate or an
+        iterable of KeyRates. Forms the set union of all KeyRate objects ordered
+        by key_rate date. Returns a reference to self.
         """
         try:
             other_kr_dates = set(key_rate for key_rate in other)
             all_kr_dates = list(set(kr_date for kr_date in self) | other_kr_dates)
-            return KeyRateCollection(all_kr_dates)
+            self.key_rates = all_kr_dates
+            self._create_combined_adjustment_function()
+            return self
 
-        except:
-            return NotImplemented
+        except TypeError:
+            msg = 'Right operand += must be an iterable of KeyRate object or a singular KeyRate.'
+            raise TypeError(msg)
 
 
 

@@ -208,7 +208,7 @@ def test_KeyRateCollection_addition_with_KeyRate_makes_valid_collection():
 
     (first_kr, *rest_kr) = key_rate_list
     rest_kr_collection = KeyRateCollection(rest_kr)
-    sum_collection = rest_kr_collection + first_kr
+    sum_collection = rest_kr_collection + KeyRateCollection([first_kr])
 
     assert sum_collection
 
@@ -222,7 +222,7 @@ def test_KeyRateCollection_addition_with_KeyRate_gives_collection():
 
     (first_kr, *rest_kr) = key_rate_list
     rest_kr_collection = KeyRateCollection(rest_kr)
-    sum_collection = rest_kr_collection + first_kr
+    sum_collection = rest_kr_collection + KeyRateCollection([first_kr])
 
     assert sum_collection == kr_collection
 
