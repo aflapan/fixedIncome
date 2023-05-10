@@ -117,11 +117,6 @@ class KeyRate(Callable):
         """
         return iter([self])
 
-    @classmethod
-    def toKeyRate(cls) -> KeyRate:
-        #TODO: FINISH
-        return KeyRate(cls)
-
 
     #-------------------------------------------------------------------
     # Functionality for creating bump functions

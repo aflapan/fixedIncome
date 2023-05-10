@@ -96,8 +96,16 @@ class WebScraper:
 
 
     #-----------------------------------------------------------------------------
+
     @staticmethod
+
     def parse_term(term_str: str) -> str:
+        """ conjoins the individual date parsed terms """
+        return '-'.join(WebScraper.parse_individual_term(part) for part in term_str.split())
+
+    @staticmethod
+    def parse_individual_term(term_str: str) -> str:
+        """ Parses an individual string term """
         num_str, unit_str = term_str.split('-')
         match unit_str:
             case 'Week':
