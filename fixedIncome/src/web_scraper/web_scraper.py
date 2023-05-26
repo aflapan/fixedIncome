@@ -1,8 +1,10 @@
 
 import urllib.request
-from typing import Optional
+from typing import Optional, Iterable, Any, Callable
 from datetime import date, datetime
 from dataclasses import dataclass
+import itertools
+from collections import defaultdict
 
 @dataclass
 class Cusip:
@@ -20,17 +22,24 @@ class Cusip:
 
 class WebScraper:
 
-    def __init__(self, base_url="https://www.treasurydirect.gov/TA_WS/securities/"):
+    def __init__(self,
+                 base_url: str = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service",
+                 endpoint: str = "/v2/accounting/od/avg_interest_rates"):
         """
+        The default endpoint provided is the average interest rates on U.S. Treasury Securities.
 
-        Example:
-            https://www.treasurydirect.gov/TA_WS/securities/Bill
+        Reference: https://fiscaldata.treasury.gov/api-documentation/
         """
         self.base_url = base_url
-        self.types = {'Bill', 'Note', 'Bond', 'CMB', 'TIPS', 'FRN'}
+        self.endpoint = endpoint
+        self.full_url = base_url + '/' + endpoint
 
-        self.field_parsers = {
-            'cusip': lambda val: str(val),  # enforces type
+        self.reference_date = date.today()
+
+        self.field_parsers: defaultdict[Any, Callable[[str], Any]]
+        self.field_parsers = defaultdict(lambda: None)
+        self.field_parsers.update(**{
+            'cusip': lambda val: str(val),
             'issueDate': WebScraper.parse_datetime,
             'securityTerm': WebScraper.parse_term,
             'securityType': WebScraper.asset_type_to_payment_freq,
@@ -40,7 +49,10 @@ class WebScraper:
             'adjustedPrice': WebScraper.parse_float,
             'unadjustedPrice': WebScraper.parse_float,
             'datedDate': WebScraper.parse_datetime,
-        }
+        })
+
+        self.filter_fxcns = [self.maturity_date_is_future,
+                             self.interest_rate_is_not_None]
 
     def get_url(self, security_type: str) -> str:
         if security_type in self.types:
@@ -52,6 +64,10 @@ class WebScraper:
 
 
     def read_url_into_html_str(self, url: str) -> str:
+        """
+        Reads web download from the provided url and decodes the html bytes
+        using utf-8. Returns the string for downstream processing.
+        """
         url_reader = urllib.request.urlopen(url)
         page_in_html_bytes = url_reader.read()
         html_str = page_in_html_bytes.decode("utf-8")
@@ -77,8 +93,7 @@ class WebScraper:
                 seperator_index = key_val_str.find(':')
                 key = key_val_str[:seperator_index].lstrip('"').rstrip('"')
                 val = key_val_str[seperator_index+1:].lstrip('"').rstrip('"')
-
-                parser_fxcn = self.field_parsers.get(key, None)
+                parser_fxcn = self.field_parsers[key]
                 if parser_fxcn is not None:
                     cusip_dict[key] = parser_fxcn(val)
 
@@ -86,19 +101,43 @@ class WebScraper:
 
         return cusip_list
 
-    def filter_cusip_list(self, cusips: list[Cusip]) -> list[Cusip]:
-        """
+    #-------------------------------------------------------------------------
+    # Filtering functionality
 
-        Returns a list of cusips which passes all of the filters.
+    def unadjustPrice_is_not_None(self, cusip: Cusip) -> bool:
+        "Returns a boolean signifying whether the cusip's unadjusted price is not None."
+        return cusip.unadjustedPrice is not None
+
+    def maturity_date_is_future(self, cusip: Cusip) -> bool:
+        "Returns a boolean signifying whether the cusip's maturity date is in the future."
+        return cusip.maturityDate >= self.reference_date
+
+    def interest_rate_is_not_None(self, cusip: Cusip) -> bool:
+
+        return cusip.interestRate is not None
+
+
+    def all_filters(self, cusip: Cusip) -> bool:
         """
-        [cusip for cusip in cusips if cusip.unadjustedPrice is not None]
-        pass
+        Returns a boolean signifying whether the cusip's
+        passes all the tests in self.filter_fxcns.
+        """
+        return all(filter_fxcn(cusip) for filter_fxcn in self.filter_fxcns)
+
+
+    def filter_cusips(self, cusips: Iterable[Cusip]) -> list[Cusip]:
+        """
+        Returns a list of cusips which passes all filters.
+        """
+        return list(filter(self.all_filters, cusips))
+
+
 
 
     #-----------------------------------------------------------------------------
+    # Helper functions for parsing terms in cusip strings
 
     @staticmethod
-
     def parse_term(term_str: str) -> str:
         """ conjoins the individual date parsed terms """
         return '-'.join(WebScraper.parse_individual_term(part) for part in term_str.split())
@@ -114,6 +153,8 @@ class WebScraper:
                 return num_str + 'M'
             case 'Year':
                 return num_str+'Y'
+            case 'Day':
+                return num_str+'D'
             case _:
                 raise ValueError(f'Time unit {unit_str} not recognized.')
 
@@ -167,13 +208,12 @@ class WebScraper:
 if __name__ == '__main__':
     web_scraper = WebScraper()
 
-    tbill_url = web_scraper.get_url('Bill')
-    bill_html_str = web_scraper.read_url_into_html_str(tbill_url)
-    bill_cusips = web_scraper.parse_html_str_into_cusip_list(bill_html_str)
+    for security in ['Bill', 'Note', 'Bond', 'CMB', 'TIPS', 'FRN']:
 
-    bond_url = web_scraper.get_url('Bond')
-    bond_html_str = web_scraper.read_url_into_html_str(bond_url)
-    bond_cusips = web_scraper.parse_html_str_into_cusip_list(bond_html_str)
+        url = web_scraper.get_url('Bill')
+        html_str = web_scraper.read_url_into_html_str(url)
+        cusips = web_scraper.parse_html_str_into_cusip_list(html_str)
+        print(web_scraper.filter_cusips(cusips))
 
 
 
