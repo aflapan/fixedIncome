@@ -15,7 +15,7 @@ from typing import Callable, Optional, NamedTuple, Sequence
 
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.assets.bonds import Bond
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 
@@ -188,7 +188,7 @@ class YieldCurve(object):
 
     def _calc_pv_yield_space(self, bond: Bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """
-        Returns a float for the present value of a bond.
+        Returns a float for the present value of a bonds.
         """
 
         received_payments = bond._is_payment_received(self.reference_date)
@@ -226,7 +226,7 @@ class YieldCurve(object):
     # Duration and convexity with respect to parallel shifts of yield curve
     def calculate_pv_deriv(self, bond: Bond, offset: float = 0.0) -> float:
         """
-        Calculates the DV01 of the provided bond under parallel shifts of the yield curve.
+        Calculates the DV01 of the provided bonds under parallel shifts of the yield curve.
         offset allows the user to specify a shift around which the derivative will be computed.
 
 
@@ -245,8 +245,8 @@ class YieldCurve(object):
 
     def duration(self, bond: Bond) -> float:
         """
-        Calculates the duration of the bond, as
-        -1/P * dP/dy where P is the bond price.
+        Calculates the duration of the bonds, as
+        -1/P * dP/dy where P is the bonds price.
         """
         derivative = self.calculate_pv_deriv(bond)
         present_value = self.calculate_present_value(bond)
@@ -254,7 +254,7 @@ class YieldCurve(object):
 
     def convexity(self, bond: Bond) -> float:
         """
-        calculate the convexity of a bond, defined as C := 1/P * d^2 P/d^2y
+        calculate the convexity of a bonds, defined as C := 1/P * d^2 P/d^2y
         Reference: Tuckman and Serrat, 4th ed. equation (4.14).
         """
 
@@ -282,7 +282,7 @@ class YieldCurve(object):
 
     def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
         """
-        Computes the dv01s of the bond with respect to each KeyRate in the KeyRateCollection.
+        Computes the dv01s of the bonds with respect to each KeyRate in the KeyRateCollection.
         Returns a list of HedgeRatios.
         """
 
@@ -328,8 +328,8 @@ class YieldCurve(object):
     def plot_price_curve(self, bond: Bond,
                          lower_shift: float = -2.0, upper_shift: float = 2.0, shift_increment: float = 0.01) -> None:
         """
-        Plots the present value of the bond along with linear (duration only) and
-        quadratic (duration+convexity) approximations of the bond price as the yield curve
+        Plots the present value of the bonds along with linear (duration only) and
+        quadratic (duration+convexity) approximations of the bonds price as the yield curve
         parallel shifts up and down.
         """
 
@@ -364,7 +364,7 @@ class YieldCurveFactory(object):
     """
 
     #------------------------------------------------------------------
-    # Methods for constructing a curve based on bond Yields
+    # Methods for constructing a curve based on bonds Yields
 
     def construct_curve_from_yield_to_maturities(self, bond_collection: Sequence[Bond], interpolation_method: str,
                                                  reference_date: date) -> YieldCurve:
@@ -431,15 +431,5 @@ class YieldCurveFactory(object):
         yield_curve_obj.reset_interpolation_values(calibrated_values)
 
         return yield_curve_obj
-
-
-    def read_data_from_auction_website(self, url_base="https://www.treasurydirect.gov/",
-                                            url_extension="auctions/auction-query/") -> None:
-
-        url = os.path.join(url_base, url_extension, "securities.csv")
-
-        urllib.request.urlopen(url)
-
-        return False
 
 

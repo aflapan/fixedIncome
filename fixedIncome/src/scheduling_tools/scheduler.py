@@ -2,11 +2,17 @@ import datetime
 from dateutil.relativedelta import relativedelta
 import collections
 import pandas as pd  # type: ignore
+from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency, BusinessDayAdjustment
 
+import enum
 
 class Scheduler(object):
-    def __init__(self, tenor:str, purchase_date: datetime.date, maturity_date: datetime.date,
-                 settlement_convention: str, payment_frequency: str, business_day_adjustment: str) -> None:
+    def __init__(self, tenor: str,
+                 purchase_date: datetime.date,
+                 maturity_date: datetime.date,
+                 settlement_convention: str,
+                 payment_frequency: PaymentFrequency,
+                 business_day_adjustment: BusinessDayAdjustment) -> None:
         """
 
         :param purchase_date:
@@ -103,14 +109,18 @@ class Scheduler(object):
         # first step is to generate the payment days without holiday adjustments
 
         match self.payment_frequency:
-            case 'zero-coupon':
+            case PaymentFrequency.ZERO_COUPON:
                 increment = None
-            case 'quarterly':
+
+            case PaymentFrequency.QUARTERLY:
                 increment = relativedelta(months=3)
-            case 'semi-annual':
+
+            case PaymentFrequency.SEMI_ANNUAL:
                 increment = relativedelta(months=6)
-            case 'annual':
+
+            case PaymentFrequency.ANNUAL:
                 increment = relativedelta(years=1)
+
             case _:
                 raise ValueError(f"{self.payment_frequency} is not a valid payment frequency.")
 
@@ -118,7 +128,7 @@ class Scheduler(object):
         date = self.maturity_date
 
         if self.payment_frequency != 'zero-coupon':
-            while (date > self.dated_date + increment):
+            while date > self.dated_date + increment:
                 date = date - increment
                 payment_dates.append((date, 'coupon payment'))
 
@@ -130,10 +140,10 @@ class Scheduler(object):
 
         # date adjustment fxcn
         match self.business_day_adjustment:
-            case 'following':
+            case BusinessDayAdjustment.FOLLOWING:
                 adjsutment_fxcn = self._following_date_adjustment
 
-            case 'modified following':
+            case BusinessDayAdjustment.MODIFIED_FOLLOWING:
                 adjsutment_fxcn = self._modified_following_date_adjustment
 
             case _:
@@ -160,18 +170,18 @@ class Scheduler(object):
         Method to compute the settlement date based on the purchase date and the settlement_convention.
         """
         match self.settlement_convention:
-            case "T+0":
+            case "T+0 business":
                 return self.add_new_york_business_days(self.purchase_date, business_days=0)
 
-            case "T+1":
+            case "T+1 business":
                 return self.add_new_york_business_days(self.purchase_date, business_days=1)
 
-            case "T+2":
+            case "T+2 business":
                 return self.add_new_york_business_days(self.purchase_date, business_days=2)
 
             case _:
                 raise ValueError(f"Settlement Convention {self.settlement_convention} is invalid. Valid strings are "
-                                 f"'T+0', 'T+1', 'T+2'.")
+                                 f"'T+0 business', 'T+1 business', 'T+2 business'.")
 
     # --------------------------------------------------------------
     # Holiday Functionality

@@ -9,7 +9,7 @@ import datetime
 import pandas as pd  # type: ignore
 import pytest
 
-from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.assets.bonds import Bond
 from fixedIncome.src.curves.yield_curve import YieldCurve, YieldCurveFactory
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 

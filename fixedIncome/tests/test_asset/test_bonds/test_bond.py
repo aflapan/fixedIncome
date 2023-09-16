@@ -3,7 +3,7 @@ This file contains unit tests for the Bond class.
 """
 
 import datetime
-from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.assets.bonds.bond import Bond
 
 #-----------------------------------------------------------------
 # Create a series of test objects.
@@ -20,12 +20,12 @@ four_wk = Bond(price=99.648833,
 
 
 one_yr = Bond(price=95.151722,
-                coupon=0.00,
-                principal=100,
-                tenor='1Y',
-                payment_frequency='zero-coupon',
-                purchase_date=purchase_date,
-                maturity_date=datetime.date(2024, 2, 22))
+              coupon=0.00,
+              principal=100,
+              tenor='1Y',
+              payment_frequency='zero-coupon',
+              purchase_date=purchase_date,
+              maturity_date=datetime.date(2024, 2, 22))
 
 # Two Year
 two_yr = Bond(price=99.909356,
@@ -64,19 +64,19 @@ seven_yr = Bond(price=99.625524,
 
 # Ten Year
 ten_yr = Bond(price=99.058658,
-                coupon=3.5000,
-                principal=100,
-                tenor='10Y',
-                purchase_date=purchase_date,
-                maturity_date=datetime.date(2033, 2, 15))
+              coupon=3.5000,
+              principal=100,
+              tenor='10Y',
+              purchase_date=purchase_date,
+              maturity_date=datetime.date(2033, 2, 15))
 
 # Twenty Year
 twenty_yr = Bond(price=98.601167,
-                coupon=3.875,
-                principal=100,
-                tenor='20Y',
-                purchase_date=purchase_date,
-                maturity_date=datetime.date(2043, 2, 15))
+                 coupon=3.875,
+                 principal=100,
+                 tenor='20Y',
+                 purchase_date=purchase_date,
+                 maturity_date=datetime.date(2043, 2, 15))
 
 
 # Thirty Year
@@ -126,7 +126,7 @@ def test_accrued_interest_nonnegative():
 
 def test_yield_to_maturity_present_value():
     """
-    Tests if the present values of bond cashflows equal the full market price when
+    Tests if the present values of bonds cashflows equal the full market price when
      semi-annualy discounted at their yield to maturity rates.
 
      Should assert True, as the yield to maturity is defined as

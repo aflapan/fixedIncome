@@ -13,7 +13,6 @@ def main(bond_collection, curve_factory) -> None:
                                                       interpolation_method='cubic',
                                                       reference_date=purchase_date)
     # Trial Key Rate to test bumping Yield Curve
-
     four_wk_kr = KeyRate(day_count_convention='act/act',
                          key_rate_date=date(2023, 3, 28),
                          prior_date=None,
@@ -57,17 +56,14 @@ def main(bond_collection, curve_factory) -> None:
     key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,
                      thirty_yr_kr]
     kr_collection = KeyRateCollection(key_rate_list)
-
     kr_collection._set_dates_in_collection()
 
     yield_curve.plot(adjustment=kr_collection)
-
     yield_curve.plot_price_curve(thirty_yr)
 
-    # DV01 calculations
+    # DV01 and convexity calculations
 
     durations = [yield_curve.duration(bond) for bond in bond_collection]
-
     print("Duration values are...")
     print(durations)
 
@@ -81,10 +77,7 @@ def main(bond_collection, curve_factory) -> None:
     dv01s = yield_curve.calculate_dv01s(ten_yr, kr_collection)
     print("Key rate DV01s...")
     print(dv01s)
-
     print(format(kr_collection))
-
-
 
 
 

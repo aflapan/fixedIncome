@@ -12,6 +12,7 @@ from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalcul
 
 class Bond(object):
 
+    ONE_BASIS_POINT = 0.01
     def __init__(self,
                  price: float,
                  coupon: float,
@@ -20,21 +21,21 @@ class Bond(object):
                  purchase_date: datetime.date,
                  maturity_date: datetime.date,
                  cusip: Optional[str] = None,
-                 settlement_convention: str = 'T+1',
+                 settlement_convention: str = 'T+1 business',
                  payment_frequency: str = 'semi-annual',
                  day_count_convention: str = 'act/act',
                  business_day_adjustment: str = 'following') -> None:
         """
-        Creates an instance of the bond class given the bond specifics detailed below.
+        Creates an instance of the bonds class given the bonds specifics detailed below.
 
         Parameters:
-            price: The market quote of the treasury bond. Quoted as per market convention.
+            price: The market quote of the treasury bonds. Quoted as per market convention.
             coupon: A float representing the coupon rate in percent (%)
-            principal: A int representing the principal amount of the bond, on which coupon payments are made.
+            principal: A int representing the principal amount of the bonds, on which coupon payments are made.
             purchase_date: The date on which the purchase the U.S. Treasury Bond is made.
             settlement_convention: A str representing the settlement convention.
                                    Valid strings are 'T+0', 'T+1', and 'T+2'.
-            maturity_date: The date on which the bond matures, i.e. the date where the principal is returned.
+            maturity_date: The date on which the bonds matures, i.e. the date where the principal is returned.
         """
 
         self.price = price
@@ -93,8 +94,8 @@ class Bond(object):
 
         if self.settlement_date < self.dated_date:
 
-            raise ValueError(f'Settle date {self.settlement_date} is before the dated date {self.dated_date}'
-                             f'for bond\n{self}.')
+            raise ValueError(f'Settlement date {self.settlement_date} is before the dated date {self.dated_date}'
+                             f' for bonds\n{self}.')
 
         # Find last payment accrual date.
         # if the first coupon payment date is in the future, reference date is when interest beings accruing
@@ -168,8 +169,8 @@ class Bond(object):
 
     def _is_payment_received(self, purchase_date: Optional[datetime.date] = None) -> pd.Series:
         """
-        Determines if each payment will be received by the holder of the bond
-        if they purchase the bond on the provided purchase date. Returns a pandas
+        Determines if each payment will be received by the holder of the bonds
+        if they purchase the bonds on the provided purchase date. Returns a pandas
         series of boolean entries whose indices are the same as
         self.payment_schedule.
         """
@@ -177,18 +178,17 @@ class Bond(object):
             purchase_date = self.purchase_date
 
         settlement_date = self.scheduler_obj.add_new_york_business_days(purchase_date, 1)
-
         return self.payment_schedule['Date'] >= settlement_date
 
 
     def calculate_present_value_for_fixed_yield(self, yield_rate, purchase_date:datetime.date=None) -> float:
         """
-        Calculates the present value of bond cash flows
+        Calculates the present value of bonds cash flows
         when discount factors are constructed from compounding
         at the provided rate.
 
         Discount factors have the form
-        df = 1/ (1 + yield / (100 * num_payments))^T
+        df = 1/ (1 + yield / (100 * num_payments))^Time
         """
 
         if purchase_date is None:
@@ -196,10 +196,9 @@ class Bond(object):
 
         # Calculate Exponents used for compounding.
         # exponents is automatically sub-selected to only those payments which will be received
-        # by the purchaser of the bond on purchase_date
+        # by the purchaser of the bonds on purchase_date
 
         time_to_payments = self.calculate_payment_accrual_factors(purchase_date)  # pd.Series
-
         payment_flag = self.payment_schedule['Adjusted Date'].isin(time_to_payments.index)
 
         future_payment_amounts = self.payment_schedule.loc[
@@ -216,9 +215,9 @@ class Bond(object):
 
     def calculate_yield_to_maturity(self, purchase_date: datetime.date = None) -> float:
         """
-        Calculates the yield to maturity (YTM) of a bond, which is defined as the
-        single rate for which discounting the bond's cash flow gives the original price.
-        For example, consider a bond with coupon rate C and Principal and which has three semi-annual payments.
+        Calculates the yield to maturity (YTM) of a bonds, which is defined as the
+        single rate for which discounting the bonds's cash flow gives the original price.
+        For example, consider a bonds with coupon rate C and Principal and which has three semi-annual payments.
 
         Price = ((C / 2*100) * Principal) / (1 + YTM / 2*100)           # first coupon payment discounted
               + (C / 2*100) * Principal) /(1 + YTM / 2*100)**2          # Second coupon payment discounted
@@ -243,7 +242,7 @@ class Bond(object):
                                                 dcc: str = 'act/act') -> float:
         """
         Calculates the continuously-compounding rate in percent (%) for the given day-count-convention
-        which results in the market price of the bond.
+        which results in the market price of the bonds.
         """
 
         if purchase_date is None:
@@ -251,7 +250,7 @@ class Bond(object):
 
         # Calculate Exponents used for compounding.
         # exponents are automatically sub-selected to only those payments which will be received
-        # by the purchaser of the bond on purchase_date
+        # by the purchaser of the bonds on purchase_date
 
         received_payments = self._is_payment_received(purchase_date)
 
@@ -269,10 +268,32 @@ class Bond(object):
 
         # Set discounted cash flows equal to full market price
         solution = scipy.optimize.root(lambda y: future_payment_amounts.dot(np.exp(-y * time_to_payments)) - self.full_price,
-                                       x0=np.array([0.0]),
+                                       x0=np.array([0.05]),
                                        tol=1E-10)
 
-        return round(solution['x'].item()*100, 3) # Multiply by 100 to convert to %
+        return solution['x'].item()*100 # Multiply by 100 to convert to %
+
+
+    def modified_duration(self, purchase_date: Optional[datetime.date] = None) -> float:
+        """
+        Calculates the modified duration of a bonds give a 1 bp bump in its yield-to-maturity.
+        Modified duration is defined to be -1/P * dP/dy, where P is the full priuce of the bonds and
+        y is the yield-to-maturity.
+        """
+        ytm = self.calculate_yield_to_maturity(purchase_date)
+
+        upper_bumped_ytm = ytm + self.ONE_BASIS_POINT/2
+        upper_bumped_price = self.calculate_present_value_for_fixed_yield(yield_rate=upper_bumped_ytm,
+                                                                          purchase_date=purchase_date)
+
+        lower_bumped_ytm = ytm - self.ONE_BASIS_POINT/2
+        lower_bumped_price = self.calculate_present_value_for_fixed_yield(yield_rate=lower_bumped_ytm,
+                                                                          purchase_date=purchase_date)
+
+        price_deriv = (upper_bumped_price - lower_bumped_price)/self.ONE_BASIS_POINT
+        return -price_deriv/self.full_price
+
+
 
     #-----------------------------------------------------------------------------
     # Coupon calculations given yield to maturity
@@ -285,7 +306,7 @@ class Bond(object):
     # Come back to fix this
     def calculate_ex_post_given_reinvestment_rates(self, reinvestment_rates:pd.Series) -> float:
         """
-        Calculates the final value of the bond when each
+        Calculates the final value of the bonds when each
         scheduled payment is reinvested at the rate with semi-annual compounding
         until maturity. The dates in the index of reinvestment_rates
         should one-to-one correspond to the dates in self.payment_schedule, as
@@ -296,7 +317,7 @@ class Bond(object):
             reinvestment_rates: pd.Series of the same length and with the same indices as self.payment_schedule.
                                 Values in the series correspond to rates in percent (%).
         Returns:
-            ex_post_value: A float corresponding to the final value of the bond after all payments have been
+            ex_post_value: A float corresponding to the final value of the bonds after all payments have been
                            made and all coupons reinvested with semi-annual compounding at the provided rates.
         """
 
@@ -305,7 +326,7 @@ class Bond(object):
         def num_accrual_periods_left(payment_date:datetime.date) -> int:
             """ Helper to return the number of acrrual periods left
             between a provided payment date and the maturity date
-            of the bond.
+            of the bonds.
             """
 
             diff_in_years = self.maturity_date.year - payment_date.year
@@ -324,9 +345,9 @@ class Bond(object):
         """
         The math is based on solving for the rate r in the equation
         Price (1 + r / 2*100 )**n = ex_post
-        where Price is the initial price of the bond, r is the spot rate to be solved for,
+        where Price is the initial price of the bonds, r is the spot rate to be solved for,
         n is the number of accrual periods (also the length of the payment schedule),
-        and ex_post the user-given ex post value of the bond after all
+        and ex_post the user-given ex post value of the bonds after all
         coupon payments and possible reinvestments.
 
         Steps of the inversion are:
@@ -377,7 +398,7 @@ class Bond(object):
 
     def get_payment_schedule(self) -> pd.DataFrame:
         """
-        Returns the payment schedule for the bond as a pd.DataFrame.
+        Returns the payment schedule for the bonds as a pd.DataFrame.
         """
         return self.payment_schedule
 
@@ -385,7 +406,7 @@ class Bond(object):
     def _calculate_num_payments_per_year(self) -> int:
         """
         Returns an integer representing the number of coupon payments
-        made by the bond per year. Dependent on the provided string
+        made by the bonds per year. Dependent on the provided string
         `payment_frequency', and the results table is
 
         'zero-coupon' -> 0

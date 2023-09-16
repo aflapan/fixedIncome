@@ -54,24 +54,19 @@ class WebScraper:
         self.filter_fxcns = [self.maturity_date_is_future,
                              self.interest_rate_is_not_None]
 
-    def get_url(self, security_type: str) -> str:
-        if security_type in self.types:
-            url = self.base_url + security_type
-            return url
 
-        else:
-            raise ValueError(f'{security_type} not found in security types. Types are ' + ', '.join(list(self.types)))
-
-
-    def read_url_into_html_str(self, url: str) -> str:
+    def read_url_into_html_str(self, url: Optional[str] = None) -> str:
         """
         Reads web download from the provided url and decodes the html bytes
         using utf-8. Returns the string for downstream processing.
         """
+        if url is None:
+            url = self.full_url
+
         url_reader = urllib.request.urlopen(url)
         page_in_html_bytes = url_reader.read()
         html_str = page_in_html_bytes.decode("utf-8")
-        html_str = html_str.lstrip('[').strip(']')  # remove leading and ending brackets to get cusips bracketed by { }
+        #html_str = html_str.lstrip('[').strip(']')  # remove leading and ending brackets to get cusips bracketed by { }
         return html_str
 
 
@@ -207,13 +202,9 @@ class WebScraper:
 
 if __name__ == '__main__':
     web_scraper = WebScraper()
+    html_str = web_scraper.read_url_into_html_str()
 
-    for security in ['Bill', 'Note', 'Bond', 'CMB', 'TIPS', 'FRN']:
 
-        url = web_scraper.get_url('Bill')
-        html_str = web_scraper.read_url_into_html_str(url)
-        cusips = web_scraper.parse_html_str_into_cusip_list(html_str)
-        print(web_scraper.filter_cusips(cusips))
 
 
 

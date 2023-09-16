@@ -3,7 +3,7 @@ This file contains the unit tests
 """
 import datetime
 from fixedIncome.src.curves.yield_curve import YieldCurveFactory
-from fixedIncome.src.assets.bond import Bond
+from fixedIncome.src.assets.bonds import Bond
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 
@@ -117,9 +117,9 @@ def test_present_value_for_calibration_instruments() -> None:
 def test_bond_pv_does_not_change_for_key_rate_beyond_maturity():
     """
     Tests that a Bond does not have exposure to a KeyRate if the prior date
-    for the KeyRate is greater than or equal to the maturity date of the bond.
+    for the KeyRate is greater than or equal to the maturity date of the bonds.
 
-    Simply stated, the dv01 of the bond with respect to a key rate is 0 if the bond has no
+    Simply stated, the dv01 of the bonds with respect to a key rate is 0 if the bonds has no
     exposure to the key rate.
     """
 
