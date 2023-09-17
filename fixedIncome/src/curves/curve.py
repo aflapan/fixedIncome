@@ -57,9 +57,9 @@ class Curve(Callable):
         self._create_interpolation_object()
 
 
-    def __call__(self, date_obj: date) -> float:
+    def __call__(self, date_obj: date, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """ Shortcut to calling the interpolate method which allows the user to call the object directly. """
-        return self.interpolate(date_obj)
+        return self.interpolate(date_obj, adjustment)
 
 
     def date_to_interpolation_axis(self, date_obj: date) -> float:
