@@ -2,10 +2,9 @@
 This file contains the unit tests
 """
 import datetime
-from fixedIncome.src.curves.yield_curve import YieldCurveFactory
-from fixedIncome.src.assets.bonds import Bond
-from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
-
+from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurveFactory
+from fixedIncome.src.assets.bonds.bond import Bond
+from fixedIncome.src.curves.key_rate import KeyRate
 
 # Create a series of test objects.
 purchase_date = datetime.date(2023, 2, 27)

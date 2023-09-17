@@ -1,12 +1,11 @@
 """
 A base class to represent a cashflow consisting of payment dates and payment amounts.
 """
-
 from __future__ import annotations
 from datetime import date
 from typing import Iterable, NamedTuple, Optional
 import pandas as pd
-from collections.abc import Iterable
+from collections.abc import Iterable, MutableSequence
 import bisect
 
 class Payment(NamedTuple):
@@ -14,7 +13,7 @@ class Payment(NamedTuple):
     payment: Optional[float] = None
 
 
-class Payoff(Iterable):
+class Cashflow(Iterable, MutableSequence):
     """ A base class representing a cashflows. """
     def __init__(self, payments: Iterable[Payment]) -> None:
         self._schedule = sorted(list(payments), key=lambda payment: payment.payment_date)
@@ -46,7 +45,7 @@ class Payoff(Iterable):
         """
         bisect.insort_right(self._schedule, payment, key=lambda payoff: payoff.payment_date)
 
-    # Conversion methods
+    # Conversion methodsan introduction to git
     def to_series(self) -> pd.Series:
         return pd.Series(self.get_payments(), index=self.get_payment_dates())
 
@@ -54,8 +53,10 @@ class Payoff(Iterable):
         return pd.DataFrame(zip(self.get_payment_dates(), self.get_payments()), columns=['Payment Dates', 'Payments'])
 
     @classmethod
-    def create_from_date_and_float_iterables(cls, payment_dates: Iterable[date], payments: Iterable[float]) -> Payoff:
-        """  """
+    def create_from_date_and_float_iterables(cls,
+                                             payment_dates: Iterable[date],
+                                             payments: Iterable[Optional[float]]) -> Cashflow:
+        """ Instantiates a Cashflow from separate iterables of payment dates and amounts. """
         payment_dates = list(payment_dates)
         payments = list(payments)
 

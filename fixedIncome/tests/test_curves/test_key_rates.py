@@ -2,6 +2,7 @@
 This file contains the unit tests for the KeyRate and KeyRateCollection objects.
 """
 
+from datetime import date
 from random import shuffle
 from copy import deepcopy
 import datetime
@@ -9,54 +10,53 @@ import datetime
 import pandas as pd  # type: ignore
 import pytest
 
-from fixedIncome.src.assets.bonds import Bond
-from fixedIncome.src.curves.yield_curve import YieldCurve, YieldCurveFactory
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
 
 #----------------------------------------------------------------------
 # Construct the objects to test
 
-purchase_date = datetime.date(2023, 2, 27)
+purchase_date = date(2023, 2, 27)
 
-four_wk_kr = KeyRate(day_count_convention='act/act',
-                     key_rate_date=datetime.date(2023, 3, 28),
+four_wk_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                     key_rate_date=date(2023, 3, 28),
                      prior_date=None,
-                     next_date=datetime.date(2024, 2, 22))
+                     next_date=date(2024, 2, 22))
 
 
-one_yr_kr = KeyRate(day_count_convention='act/act',
-                    key_rate_date=datetime.date(2024, 2, 22),
-                    prior_date=datetime.date(2023, 3, 28),
-                    next_date=datetime.date(2025, 2, 28))
+one_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                    key_rate_date=date(2024, 2, 22),
+                    prior_date=date(2023, 3, 28),
+                    next_date=date(2025, 2, 28))
 
-two_yr_kr = KeyRate(day_count_convention='act/act',
-                    key_rate_date=datetime.date(2025, 2, 28),
-                    prior_date=datetime.date(2024, 2, 22),
-                    next_date=datetime.date(2026, 2, 15))
+two_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                    key_rate_date=date(2025, 2, 28),
+                    prior_date=date(2024, 2, 22),
+                    next_date=date(2026, 2, 15))
 
-three_year_kr = KeyRate(day_count_convention='act/act',
-                        key_rate_date=datetime.date(2026, 2, 15),
-                        prior_date=datetime.date(2025, 2, 28),
-                        next_date=datetime.date(2030, 2, 28))
+three_year_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                        key_rate_date=date(2026, 2, 15),
+                        prior_date=date(2025, 2, 28),
+                        next_date=date(2030, 2, 28))
 
-seven_yr_kr = KeyRate(day_count_convention='act/act',
-                      key_rate_date=datetime.date(2030, 2, 28),
-                      prior_date=datetime.date(2026, 2, 15),
-                      next_date=datetime.date(2033, 2, 15))
+seven_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                      key_rate_date=date(2030, 2, 28),
+                      prior_date=date(2026, 2, 15),
+                      next_date=date(2033, 2, 15))
 
-ten_yr_kr = KeyRate(day_count_convention='act/act',
-                    key_rate_date=datetime.date(2033, 2, 15),
-                    prior_date=datetime.date(2030, 2, 28),
-                    next_date=datetime.date(2043, 2, 15))
+ten_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                    key_rate_date=date(2033, 2, 15),
+                    prior_date=date(2030, 2, 28),
+                    next_date=date(2043, 2, 15))
 
-twenty_yr_kr = KeyRate(day_count_convention='act/act',
-                       key_rate_date=datetime.date(2043, 2, 15),
-                       prior_date=datetime.date(2033, 2, 15),
-                       next_date=datetime.date(2053, 2, 15))
+twenty_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                       key_rate_date=date(2043, 2, 15),
+                       prior_date=date(2033, 2, 15),
+                       next_date=date(2053, 2, 15))
 
-thirty_yr_kr = KeyRate(day_count_convention='act/act',
-                       key_rate_date=datetime.date(2053, 2, 15),
-                       prior_date=datetime.date(2043, 2, 15),
+thirty_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+                       key_rate_date=date(2053, 2, 15),
+                       prior_date=date(2043, 2, 15),
                        next_date=None)
 
 
@@ -156,7 +156,7 @@ def test_left_dates_adjust_function_evaluation_for_key_rate_with_prior_None():
     """
 
     four_wk_kr.set_prior_date(None)
-    test_dates = pd.date_range(start=datetime.date(2000, 1, 1), end=four_wk_kr.key_rate_date)  # creates timestamps
+    test_dates = pd.date_range(start=date(2000, 1, 1), end=four_wk_kr.key_rate_date)  # creates timestamps
     assert all(abs(four_wk_kr(date.date()) - 0.01) < PASS_THRESH for date in test_dates)
 
 
@@ -167,7 +167,7 @@ def test_right_dates_adjust_function_evaluation_for_key_rate_with_next_None():
     """
 
     thirty_yr_kr.set_next_date(None)
-    test_dates = pd.date_range(start=thirty_yr_kr.key_rate_date, end=datetime.date(2100, 1, 1))  # creates timestamps
+    test_dates = pd.date_range(start=thirty_yr_kr.key_rate_date, end=date(2100, 1, 1))  # creates timestamps
     assert all(abs(thirty_yr_kr(date.date()) - 0.01) < PASS_THRESH for date in test_dates)
 
 
@@ -181,7 +181,7 @@ def test_KeyRateCollection_adjustment_function_is_parallel_shift():
     """
 
     kr_collection._set_dates_in_collection()
-    test_dates = pd.date_range(start=datetime.date(2000, 1, 1), end=datetime.date(2100, 1, 1))
+    test_dates = pd.date_range(start=date(2000, 1, 1), end=date(2100, 1, 1))
     collection_vals = (kr_collection(date_val.date()) for date_val in test_dates)
     assert all(abs(val - 0.01) < PASS_THRESH for val in collection_vals)
 

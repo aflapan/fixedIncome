@@ -6,6 +6,8 @@ from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFreque
 
 import enum
 
+
+
 class Scheduler(object):
     def __init__(self, tenor: str,
                  purchase_date: datetime.date,

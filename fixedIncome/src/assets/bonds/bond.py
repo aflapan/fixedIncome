@@ -6,13 +6,15 @@ import scipy  # type: ignore
 import bisect
 from typing import Optional
 
-from fixedIncome.src.scheduling_tools import scheduler
+from fixedIncome.src.scheduling_tools.scheduler import Scheduler
+from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+from fixedIncome.src.assets.cashflow import Payment, Cashflow
 
+ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value
 
-class Bond(object):
+class Bond(Cashflow):
 
-    ONE_BASIS_POINT = 0.01
     def __init__(self,
                  price: float,
                  coupon: float,
@@ -22,7 +24,7 @@ class Bond(object):
                  maturity_date: datetime.date,
                  cusip: Optional[str] = None,
                  settlement_convention: str = 'T+1 business',
-                 payment_frequency: str = 'semi-annual',
+                 payment_frequency: PaymentFrequency = 'semi-annual',
                  day_count_convention: str = 'act/act',
                  business_day_adjustment: str = 'following') -> None:
         """
@@ -53,7 +55,7 @@ class Bond(object):
         self.num_payments_per_year = self._calculate_num_payments_per_year()
         self.coupon_payment = self._calculate_coupon_payment()   # coupon payment in USD ($)
 
-        self.scheduler_obj = scheduler.Scheduler(
+        self.scheduler_obj = Scheduler(
             self.tenor,
             self.purchase_date,
             self.maturity_date,
@@ -68,9 +70,7 @@ class Bond(object):
         self.settlement_date = self.scheduler_obj.settlement_date
         self.accrued_interest = self.calculate_accrued_interest()
         self.full_price = self.get_full_price()
-
        # self.continuously_compounding_rate = self.calculate_continuously_compounding_rate()
-
 
     def __repr__(self) -> str:
         string_rep = f'Bond(price={self.price},\ncoupon={self.coupon},\nprincipal={self.principal},\n' \

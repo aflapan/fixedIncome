@@ -7,7 +7,7 @@ import bisect
 from datetime import date
 from typing import Optional, Callable, Union, Iterable
 
-from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
 
 
 class KeyRate(Callable):
@@ -21,7 +21,7 @@ class KeyRate(Callable):
     __adjustment_fxcn: Callable[[date], float] = None
 
     def __init__(self,
-                 day_count_convention: str,
+                 day_count_convention: DayCountConvention,
                  key_rate_date: date,
                  prior_date: Optional[date] = None,
                  next_date: Optional[date] = None) -> None:

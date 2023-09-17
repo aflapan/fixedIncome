@@ -13,15 +13,11 @@ import scipy  # type: ignore
 from datetime import date
 from typing import Callable, Optional, NamedTuple, Sequence
 
-
+from fixedIncome.src.curves.curve import Curve, KnotValuePair
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.assets.bonds import Bond
+from fixedIncome.src.assets.bonds.bond import Bond
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
-
-class KnotValuePair(NamedTuple):
-    knot: float
-    value: float
 
 class HedgeRatio(NamedTuple):
     dv01: float
@@ -29,8 +25,7 @@ class HedgeRatio(NamedTuple):
     key_rate_date: date
 
 
-class YieldCurve(object):
-
+class YieldCurve(Curve):
     def __init__(self,
                  interpolation_values: pd.Series,
                  interpolation_method: str,

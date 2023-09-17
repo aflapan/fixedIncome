@@ -1,6 +1,4 @@
-from datetime import date
-
-from fixedIncome.src.curves.yield_curve import *
+from fixedIncome.src.curves.yield_curves.yield_curve import *
 from fixedIncome.src.curves.key_rate import *
 from fixedIncome.src.web_scraper.web_scraper import *
 
