@@ -11,11 +11,12 @@ import matplotlib.pyplot as plt  # type: ignore
 import pandas as pd  # type: ignore
 import scipy  # type: ignore
 from datetime import date
-from typing import Callable, Optional, NamedTuple, Sequence
+from enum import Enum
+from typing import Callable, Optional, NamedTuple, Sequence, Iterable
 
-from fixedIncome.src.curves.curve import Curve, KnotValuePair
-from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.assets.bonds.bond import Bond
+from fixedIncome.src.curves.curve import Curve, KnotValuePair, EndBehavior, InterpolationMethod
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 
 
@@ -24,16 +25,24 @@ class HedgeRatio(NamedTuple):
     hedge_ratio: float
     key_rate_date: date
 
+class InterpolationSpace(Enum):
+    DISCOUNT_FACTOR = 0
+    FORWARD_RATES = 1
+    YIELD = 2
+    YIELD_TO_MATURITY = 3
+
+
 
 class YieldCurve(Curve):
     def __init__(self,
-                 interpolation_values: pd.Series,
-                 interpolation_method: str,
-                 interpolation_space: str,
-                 interpolation_day_count_convention: str,
+                 interpolation_values: Iterable[UsTreasuryInstrument],
+                 quote_adjustments: Iterable[KnotValuePair],
+                 interpolation_method: InterpolationMethod,
+                 interpolation_day_count_convention: DayCountConvention,
+                 interpolation_space: InterpolationSpace,
                  reference_date: date,
-                 left_end_behavior: str,
-                 right_end_behavior: str) -> None:
+                 left_end_behavior: EndBehavior = EndBehavior.ERROR,
+                 right_end_behavior: EndBehavior = EndBehavior.ERROR) -> None:
         """
         Creates an instance of a yield curve object.
 
@@ -46,6 +55,15 @@ class YieldCurve(Curve):
             left_end_behavior: A string determining the behavior of evaluating x values below the first
         """
 
+
+        super().__init__(interpolation_values,
+                         interpolation_method,
+                         interpolation_day_count_convention,
+                         reference_date,
+                         left_end_behavior,
+                         right_end_behavior)
+
+
         self.interpolation_values = interpolation_values
         self.interpolation_method = interpolation_method
         self.interpolation_space = interpolation_space
@@ -55,15 +73,7 @@ class YieldCurve(Curve):
         self.right_end_behavior = right_end_behavior
         self.dcc_calculator_obj = DayCountCalculator()
 
-        self.valid_interpolation_methods = {'linear', 'quadratic', 'cubic', 'previous'}
 
-        self.valid_interpolation_spaces = {'Yield',
-                                           'Yield to Maturity'
-                                           }
-
-
-        assert self.interpolation_method in self.valid_interpolation_methods
-        assert self.interpolation_space in self.valid_interpolation_spaces
 
         self.knot_value_tuples_list = None
         self._preprocess_interpolation_values()
@@ -72,21 +82,6 @@ class YieldCurve(Curve):
 
     #-----------------------------------------------------------
     # Functions for creating the interpolation method.
-
-    def date_to_interpolation_axis(self, date: date) -> float:
-        """
-        Converts from a date to the interpolation x-axis value based on the
-        reference date provided when the YieldCurve object is instantiated,
-        the user-provided date, and the interpolation day-count convention string
-        provided when the YieldCurve object is instantiated.
-        day_count(reference_date, date) -> x-axis float value.
-        """
-
-        interpolation_axis_val = self.dcc_calculator_obj.compute_accrual_length(
-            start_date=self.reference_date, end_date=date, dcc=self.interpolation_dcc
-        )
-        return interpolation_axis_val
-
 
     def _preprocess_interpolation_values(self) -> list[KnotValuePair]:
         """
@@ -107,53 +102,6 @@ class YieldCurve(Curve):
         return [KnotValuePair(knot_val, y_val) for (knot_val, y_val) in zip(x_values, y_values)]
 
 
-    def _create_interpolation_object(self) -> Callable[[float], float]:
-        """
-        Creates the interpolation object, a function which maps floats into floats.
-        """
-
-        self.knot_value_tuples_list = self._preprocess_interpolation_values()
-
-        x_values = [knot_val_pair.knot for knot_val_pair in self.knot_value_tuples_list]
-        y_values = [knot_val_pair.value for knot_val_pair in self.knot_value_tuples_list]
-
-        interpolator = scipy.interpolate.interp1d(x=x_values,
-                                                  y=y_values,
-                                                  kind=self.interpolation_method,
-                                                  assume_sorted=True)
-
-        return interpolator
-
-
-    def interpolate(self, date: date, adjustment: Optional[Callable[[date], float]] = None) -> float:
-        """
-        Method which uses the interpolation object
-        """
-
-        if adjustment is None:
-            adjustment = lambda date_obj: 0
-
-        x_axis_val = self.date_to_interpolation_axis(date)
-
-        if x_axis_val < self.knot_value_tuples_list[0].knot:
-
-            match self.left_end_behavior:
-                case 'constant':
-                    return self.knot_value_tuples_list[0].value + adjustment(date)
-                case _:
-                    raise ValueError(f'Error in interpolate. {self.left_end_behavior} not a valid input.')
-
-        elif x_axis_val > self.knot_value_tuples_list[-1].knot:
-
-            match self.right_end_behavior:
-                case 'constant':
-                    return self.knot_value_tuples_list[-1].value + adjustment(date)
-
-                case _:
-                    raise ValueError(f'Error in interpolate. {self.right_end_behavior} not a valid input.')
-
-        else:
-            return self.interpolator(x_axis_val) + adjustment(date)
 
 
     def reset_interpolation_values(self, new_values: pd.Series) -> None:
@@ -183,7 +131,7 @@ class YieldCurve(Curve):
 
     def _calc_pv_yield_space(self, bond: Bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """
-        Returns a float for the present value of a bonds.
+        Returns a float for the present value of a us_treasury_instruments.
         """
 
         received_payments = bond._is_payment_received(self.reference_date)
@@ -221,7 +169,7 @@ class YieldCurve(Curve):
     # Duration and convexity with respect to parallel shifts of yield curve
     def calculate_pv_deriv(self, bond: Bond, offset: float = 0.0) -> float:
         """
-        Calculates the DV01 of the provided bonds under parallel shifts of the yield curve.
+        Calculates the DV01 of the provided us_treasury_instruments under parallel shifts of the yield curve.
         offset allows the user to specify a shift around which the derivative will be computed.
 
 
@@ -240,8 +188,8 @@ class YieldCurve(Curve):
 
     def duration(self, bond: Bond) -> float:
         """
-        Calculates the duration of the bonds, as
-        -1/P * dP/dy where P is the bonds price.
+        Calculates the duration of the us_treasury_instruments, as
+        -1/P * dP/dy where P is the us_treasury_instruments price.
         """
         derivative = self.calculate_pv_deriv(bond)
         present_value = self.calculate_present_value(bond)
@@ -249,7 +197,7 @@ class YieldCurve(Curve):
 
     def convexity(self, bond: Bond) -> float:
         """
-        calculate the convexity of a bonds, defined as C := 1/P * d^2 P/d^2y
+        calculate the convexity of a us_treasury_instruments, defined as C := 1/P * d^2 P/d^2y
         Reference: Tuckman and Serrat, 4th ed. equation (4.14).
         """
 
@@ -277,7 +225,7 @@ class YieldCurve(Curve):
 
     def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
         """
-        Computes the dv01s of the bonds with respect to each KeyRate in the KeyRateCollection.
+        Computes the dv01s of the us_treasury_instruments with respect to each KeyRate in the KeyRateCollection.
         Returns a list of HedgeRatios.
         """
 
@@ -323,8 +271,8 @@ class YieldCurve(Curve):
     def plot_price_curve(self, bond: Bond,
                          lower_shift: float = -2.0, upper_shift: float = 2.0, shift_increment: float = 0.01) -> None:
         """
-        Plots the present value of the bonds along with linear (duration only) and
-        quadratic (duration+convexity) approximations of the bonds price as the yield curve
+        Plots the present value of the us_treasury_instruments along with linear (duration only) and
+        quadratic (duration+convexity) approximations of the us_treasury_instruments price as the yield curve
         parallel shifts up and down.
         """
 
@@ -359,7 +307,7 @@ class YieldCurveFactory(object):
     """
 
     #------------------------------------------------------------------
-    # Methods for constructing a curve based on bonds Yields
+    # Methods for constructing a curve based on us_treasury_instruments Yields
 
     def construct_curve_from_yield_to_maturities(self, bond_collection: Sequence[Bond], interpolation_method: str,
                                                  reference_date: date) -> YieldCurve:

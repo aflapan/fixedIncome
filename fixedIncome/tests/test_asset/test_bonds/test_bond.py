@@ -3,7 +3,7 @@ This file contains unit tests for the Bond class.
 """
 
 import datetime
-from fixedIncome.src.assets.bonds.bond import Bond
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond
 
 #-----------------------------------------------------------------
 # Create a series of test objects.
@@ -87,7 +87,7 @@ thirty_yr = Bond(price=98.898317,
                    purchase_date=purchase_date,
                    maturity_date=datetime.date(2053, 2, 15))
 
-# all bonds with semi-annual coupons
+# all us_treasury_instruments with semi-annual coupons
 long_term_bond_collection = [two_yr, three_yr, five_yr, seven_yr, ten_yr, twenty_yr, thirty_yr]
 
 #------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def test_accrued_interest_nonnegative():
 
 def test_yield_to_maturity_present_value():
     """
-    Tests if the present values of bonds cashflows equal the full market price when
+    Tests if the present values of us_treasury_instruments cashflows equal the full market price when
      semi-annualy discounted at their yield to maturity rates.
 
      Should assert True, as the yield to maturity is defined as

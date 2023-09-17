@@ -10,13 +10,15 @@ from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 from fixedIncome.src.assets.cashflow import Payment, Cashflow
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
 
 ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value
 
-class Bond(Cashflow):
+
+class Bond(UsTreasuryInstrument):
 
     def __init__(self,
-                 price: float,
+                 market_quote: float,
                  coupon: float,
                  principal: int,
                  tenor: str,
@@ -28,19 +30,19 @@ class Bond(Cashflow):
                  day_count_convention: str = 'act/act',
                  business_day_adjustment: str = 'following') -> None:
         """
-        Creates an instance of the bonds class given the bonds specifics detailed below.
+        Creates an instance of the us_treasury_instruments class given the us_treasury_instruments specifics detailed below.
 
         Parameters:
-            price: The market quote of the treasury bonds. Quoted as per market convention.
+            price: The market quote of the treasury us_treasury_instruments. Quoted as per market convention.
             coupon: A float representing the coupon rate in percent (%)
-            principal: A int representing the principal amount of the bonds, on which coupon payments are made.
+            principal: A int representing the principal amount of the us_treasury_instruments, on which coupon payments are made.
             purchase_date: The date on which the purchase the U.S. Treasury Bond is made.
             settlement_convention: A str representing the settlement convention.
                                    Valid strings are 'T+0', 'T+1', and 'T+2'.
-            maturity_date: The date on which the bonds matures, i.e. the date where the principal is returned.
+            maturity_date: The date on which the us_treasury_instruments matures, i.e. the date where the principal is returned.
         """
 
-        self.price = price
+        self.market_quote = market_quote
         self.coupon = coupon
         self.principal = principal
         self.tenor = tenor
@@ -95,7 +97,7 @@ class Bond(Cashflow):
         if self.settlement_date < self.dated_date:
 
             raise ValueError(f'Settlement date {self.settlement_date} is before the dated date {self.dated_date}'
-                             f' for bonds\n{self}.')
+                             f' for us_treasury_instruments\n{self}.')
 
         # Find last payment accrual date.
         # if the first coupon payment date is in the future, reference date is when interest beings accruing
@@ -169,8 +171,8 @@ class Bond(Cashflow):
 
     def _is_payment_received(self, purchase_date: Optional[datetime.date] = None) -> pd.Series:
         """
-        Determines if each payment will be received by the holder of the bonds
-        if they purchase the bonds on the provided purchase date. Returns a pandas
+        Determines if each payment will be received by the holder of the us_treasury_instruments
+        if they purchase the us_treasury_instruments on the provided purchase date. Returns a pandas
         series of boolean entries whose indices are the same as
         self.payment_schedule.
         """
@@ -183,7 +185,7 @@ class Bond(Cashflow):
 
     def calculate_present_value_for_fixed_yield(self, yield_rate, purchase_date:datetime.date=None) -> float:
         """
-        Calculates the present value of bonds cash flows
+        Calculates the present value of us_treasury_instruments cash flows
         when discount factors are constructed from compounding
         at the provided rate.
 
@@ -196,7 +198,7 @@ class Bond(Cashflow):
 
         # Calculate Exponents used for compounding.
         # exponents is automatically sub-selected to only those payments which will be received
-        # by the purchaser of the bonds on purchase_date
+        # by the purchaser of the us_treasury_instruments on purchase_date
 
         time_to_payments = self.calculate_payment_accrual_factors(purchase_date)  # pd.Series
         payment_flag = self.payment_schedule['Adjusted Date'].isin(time_to_payments.index)
@@ -215,9 +217,9 @@ class Bond(Cashflow):
 
     def calculate_yield_to_maturity(self, purchase_date: datetime.date = None) -> float:
         """
-        Calculates the yield to maturity (YTM) of a bonds, which is defined as the
-        single rate for which discounting the bonds's cash flow gives the original price.
-        For example, consider a bonds with coupon rate C and Principal and which has three semi-annual payments.
+        Calculates the yield to maturity (YTM) of a us_treasury_instruments, which is defined as the
+        single rate for which discounting the us_treasury_instruments's cash flow gives the original price.
+        For example, consider a us_treasury_instruments with coupon rate C and Principal and which has three semi-annual payments.
 
         Price = ((C / 2*100) * Principal) / (1 + YTM / 2*100)           # first coupon payment discounted
               + (C / 2*100) * Principal) /(1 + YTM / 2*100)**2          # Second coupon payment discounted
@@ -229,7 +231,7 @@ class Bond(Cashflow):
             purchase_date = self.purchase_date
 
 
-        # Check this in the case of zero-coupon bonds
+        # Check this in the case of zero-coupon us_treasury_instruments
         solution = scipy.optimize.root(lambda yield_rate:
                                        self.calculate_present_value_for_fixed_yield(yield_rate, purchase_date) - self.full_price,
                                        x0=np.array([0.0]),
@@ -242,7 +244,7 @@ class Bond(Cashflow):
                                                 dcc: str = 'act/act') -> float:
         """
         Calculates the continuously-compounding rate in percent (%) for the given day-count-convention
-        which results in the market price of the bonds.
+        which results in the market price of the us_treasury_instruments.
         """
 
         if purchase_date is None:
@@ -250,7 +252,7 @@ class Bond(Cashflow):
 
         # Calculate Exponents used for compounding.
         # exponents are automatically sub-selected to only those payments which will be received
-        # by the purchaser of the bonds on purchase_date
+        # by the purchaser of the us_treasury_instruments on purchase_date
 
         received_payments = self._is_payment_received(purchase_date)
 
@@ -276,8 +278,8 @@ class Bond(Cashflow):
 
     def modified_duration(self, purchase_date: Optional[datetime.date] = None) -> float:
         """
-        Calculates the modified duration of a bonds give a 1 bp bump in its yield-to-maturity.
-        Modified duration is defined to be -1/P * dP/dy, where P is the full priuce of the bonds and
+        Calculates the modified duration of a us_treasury_instruments give a 1 bp bump in its yield-to-maturity.
+        Modified duration is defined to be -1/P * dP/dy, where P is the full priuce of the us_treasury_instruments and
         y is the yield-to-maturity.
         """
         ytm = self.calculate_yield_to_maturity(purchase_date)
@@ -306,7 +308,7 @@ class Bond(Cashflow):
     # Come back to fix this
     def calculate_ex_post_given_reinvestment_rates(self, reinvestment_rates:pd.Series) -> float:
         """
-        Calculates the final value of the bonds when each
+        Calculates the final value of the us_treasury_instruments when each
         scheduled payment is reinvested at the rate with semi-annual compounding
         until maturity. The dates in the index of reinvestment_rates
         should one-to-one correspond to the dates in self.payment_schedule, as
@@ -317,7 +319,7 @@ class Bond(Cashflow):
             reinvestment_rates: pd.Series of the same length and with the same indices as self.payment_schedule.
                                 Values in the series correspond to rates in percent (%).
         Returns:
-            ex_post_value: A float corresponding to the final value of the bonds after all payments have been
+            ex_post_value: A float corresponding to the final value of the us_treasury_instruments after all payments have been
                            made and all coupons reinvested with semi-annual compounding at the provided rates.
         """
 
@@ -326,7 +328,7 @@ class Bond(Cashflow):
         def num_accrual_periods_left(payment_date:datetime.date) -> int:
             """ Helper to return the number of acrrual periods left
             between a provided payment date and the maturity date
-            of the bonds.
+            of the us_treasury_instruments.
             """
 
             diff_in_years = self.maturity_date.year - payment_date.year
@@ -345,9 +347,9 @@ class Bond(Cashflow):
         """
         The math is based on solving for the rate r in the equation
         Price (1 + r / 2*100 )**n = ex_post
-        where Price is the initial price of the bonds, r is the spot rate to be solved for,
+        where Price is the initial price of the us_treasury_instruments, r is the spot rate to be solved for,
         n is the number of accrual periods (also the length of the payment schedule),
-        and ex_post the user-given ex post value of the bonds after all
+        and ex_post the user-given ex post value of the us_treasury_instruments after all
         coupon payments and possible reinvestments.
 
         Steps of the inversion are:
@@ -398,7 +400,7 @@ class Bond(Cashflow):
 
     def get_payment_schedule(self) -> pd.DataFrame:
         """
-        Returns the payment schedule for the bonds as a pd.DataFrame.
+        Returns the payment schedule for the us_treasury_instruments as a pd.DataFrame.
         """
         return self.payment_schedule
 
@@ -406,7 +408,7 @@ class Bond(Cashflow):
     def _calculate_num_payments_per_year(self) -> int:
         """
         Returns an integer representing the number of coupon payments
-        made by the bonds per year. Dependent on the provided string
+        made by the us_treasury_instruments per year. Dependent on the provided string
         `payment_frequency', and the results table is
 
         'zero-coupon' -> 0

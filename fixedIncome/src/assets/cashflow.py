@@ -31,7 +31,7 @@ class Cashflow(Iterable, MutableSequence):
     def __getitem__(self, item: int) -> Payment:
         return self.schedule[item]
 
-    def get_payments(self) -> list[Optional[float]]:
+    def get_payment_amounts(self) -> list[Optional[float]]:
         """ Returns a list of the payment amounts """
         return [payment.payment for payment in self.schedule]
 
@@ -47,10 +47,11 @@ class Cashflow(Iterable, MutableSequence):
 
     # Conversion methodsan introduction to git
     def to_series(self) -> pd.Series:
-        return pd.Series(self.get_payments(), index=self.get_payment_dates())
+        return pd.Series(self.get_payment_amounts(), index=self.get_payment_dates())
 
     def to_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame(zip(self.get_payment_dates(), self.get_payments()), columns=['Payment Dates', 'Payments'])
+        return pd.DataFrame(zip(self.get_payment_dates(), self.get_payment_amounts()),
+                            columns=['Payment Dates', 'Payments'])
 
     @classmethod
     def create_from_date_and_float_iterables(cls,

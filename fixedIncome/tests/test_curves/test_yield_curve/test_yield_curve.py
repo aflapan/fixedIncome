@@ -3,7 +3,7 @@ This file contains the unit tests
 """
 import datetime
 from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurveFactory
-from fixedIncome.src.assets.bonds.bond import Bond
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond
 from fixedIncome.src.curves.key_rate import KeyRate
 
 # Create a series of test objects.
@@ -101,7 +101,7 @@ yield_curve = curve_factory_obj.construct_yield_curve(bond_collection,
 
 def test_present_value_for_calibration_instruments() -> None:
     """
-    Tests if the present values of the bonds used to calibrate the yield curve
+    Tests if the present values of the us_treasury_instruments used to calibrate the yield curve
     are equal to the full market price (including accrued interest). The full prices
     were used to calibrate the yield curve, and so we expect equality up to an error threshold.
     """
@@ -116,9 +116,9 @@ def test_present_value_for_calibration_instruments() -> None:
 def test_bond_pv_does_not_change_for_key_rate_beyond_maturity():
     """
     Tests that a Bond does not have exposure to a KeyRate if the prior date
-    for the KeyRate is greater than or equal to the maturity date of the bonds.
+    for the KeyRate is greater than or equal to the maturity date of the us_treasury_instruments.
 
-    Simply stated, the dv01 of the bonds with respect to a key rate is 0 if the bonds has no
+    Simply stated, the dv01 of the us_treasury_instruments with respect to a key rate is 0 if the us_treasury_instruments has no
     exposure to the key rate.
     """
 
