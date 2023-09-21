@@ -13,10 +13,6 @@ class Payment(NamedTuple):
     payment_date: date
     payment: Optional[float] = None
 
-class ZeroCoupon(NamedTuple):
-    payment_date: date
-    price: float
-
 class Cashflow(Iterable, MutableSequence):
     """ A base class representing a cashflows. """
     def __init__(self, payments: Iterable[Payment]) -> None:
@@ -71,6 +67,7 @@ class Cashflow(Iterable, MutableSequence):
         return cls(payments=(Payment(payment_date, payment) for payment_date, payment in zip(payment_dates, payments)))
 
 class CashflowKeys(Enum):
+    SINGLE_PAYMENT: 'zero coupon'
     FIXED_LEG: 'fixed leg'
     FLOATING_LEG: 'floating leg'
     PROTECTION_LEG: 'protection leg'
@@ -88,8 +85,19 @@ class CashflowCollection(Set):
         self.cashflows = {key: cashflow for key, cashflow in zip(self.keys, self.cashflow_list)}
 
 
-#class ZeroCoupon(CashflowCollection):
-#    def __init__(self, price: float, payment_date: date):
-#        pass
+class ZeroCoupon(CashflowCollection):
+    def __init__(self, price: float, payment_date: date):
+        self._price = price
+        self._payment_date = payment_date
+        cashflows = [Cashflow(Payment(self._payment_date, 1.0), )]
+        cashflow_keys = [CashflowKeys.SINGLE_PAYMENT]
+        super().__init__(cashflows, cashflow_keys)
+
+    @property
+    def price(self):
+        return self._price
+    @property
+    def payment_date(self):
+        return self._payment_date
 
 
