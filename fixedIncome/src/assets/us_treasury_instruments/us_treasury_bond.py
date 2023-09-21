@@ -1,4 +1,4 @@
-import datetime  # type: ignore
+from datetime import date # type: ignore
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 import math  # type: ignore
@@ -7,9 +7,9 @@ import bisect
 from typing import Optional
 
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
-from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency
+from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency, BusinessDayAdjustment
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.assets.cashflow import Payment, Cashflow
+from fixedIncome.src.assets.cashflow import Payment, Cashflow, CashflowCollection, CashflowKeys
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
 
 ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value
@@ -22,13 +22,13 @@ class Bond(UsTreasuryInstrument):
                  coupon: float,
                  principal: int,
                  tenor: str,
-                 purchase_date: datetime.date,
-                 maturity_date: datetime.date,
+                 purchase_date: date,
+                 maturity_date: date,
                  cusip: Optional[str] = None,
                  settlement_convention: str = 'T+1 business',
                  payment_frequency: PaymentFrequency = 'semi-annual',
                  day_count_convention: str = 'act/act',
-                 business_day_adjustment: str = 'following') -> None:
+                 business_day_adjustment: BusinessDayAdjustment = BusinessDayAdjustment.FOLLOWING) -> None:
         """
         Creates an instance of the us_treasury_instruments class given the us_treasury_instruments specifics detailed below.
 
@@ -41,6 +41,8 @@ class Bond(UsTreasuryInstrument):
                                    Valid strings are 'T+0', 'T+1', and 'T+2'.
             maturity_date: The date on which the us_treasury_instruments matures, i.e. the date where the principal is returned.
         """
+        cashflowkeys = [CashflowKeys.FIXED_LEG]
+
 
         self.market_quote = market_quote
         self.coupon = coupon
@@ -85,6 +87,7 @@ class Bond(UsTreasuryInstrument):
 
     #--------------------------------------------------------------------------
     # Pricing utility functions
+
 
     def calculate_accrued_interest(self) -> float:
         """
@@ -141,7 +144,7 @@ class Bond(UsTreasuryInstrument):
 
     #---------------------------------------------------------------------------
     #
-    def calculate_payment_accrual_factors(self, purchase_date: datetime.date = None) -> pd.Series:
+    def calculate_payment_accrual_factors(self, purchase_date: date = None) -> pd.Series:
         """
         Calculates the exponent of the discount factor generated from compounding.
         Can be used, along with the spot-rate r, to create discount factors of the form
@@ -169,7 +172,7 @@ class Bond(UsTreasuryInstrument):
     #---------------------------------------------------------------------------
     # Yield Calculations
 
-    def _is_payment_received(self, purchase_date: Optional[datetime.date] = None) -> pd.Series:
+    def _is_payment_received(self, purchase_date: Optional[date] = None) -> pd.Series:
         """
         Determines if each payment will be received by the holder of the us_treasury_instruments
         if they purchase the us_treasury_instruments on the provided purchase date. Returns a pandas
@@ -183,7 +186,7 @@ class Bond(UsTreasuryInstrument):
         return self.payment_schedule['Date'] >= settlement_date
 
 
-    def calculate_present_value_for_fixed_yield(self, yield_rate, purchase_date:datetime.date=None) -> float:
+    def calculate_present_value_for_fixed_yield(self, yield_rate, purchase_date: date = None) -> float:
         """
         Calculates the present value of us_treasury_instruments cash flows
         when discount factors are constructed from compounding
@@ -215,7 +218,7 @@ class Bond(UsTreasuryInstrument):
         return discounted_cashflow
 
 
-    def calculate_yield_to_maturity(self, purchase_date: datetime.date = None) -> float:
+    def calculate_yield_to_maturity(self, purchase_date: date = None) -> float:
         """
         Calculates the yield to maturity (YTM) of a us_treasury_instruments, which is defined as the
         single rate for which discounting the us_treasury_instruments's cash flow gives the original price.
@@ -240,7 +243,7 @@ class Bond(UsTreasuryInstrument):
         return solution['x'].item()
 
 
-    def calculate_continuously_compounded_yield_to_maturity(self, purchase_date: datetime.date = None,
+    def calculate_continuously_compounded_yield_to_maturity(self, purchase_date: date = None,
                                                 dcc: str = 'act/act') -> float:
         """
         Calculates the continuously-compounding rate in percent (%) for the given day-count-convention
@@ -276,7 +279,7 @@ class Bond(UsTreasuryInstrument):
         return solution['x'].item()*100 # Multiply by 100 to convert to %
 
 
-    def modified_duration(self, purchase_date: Optional[datetime.date] = None) -> float:
+    def modified_duration(self, purchase_date: Optional[date] = None) -> float:
         """
         Calculates the modified duration of a us_treasury_instruments give a 1 bp bump in its yield-to-maturity.
         Modified duration is defined to be -1/P * dP/dy, where P is the full priuce of the us_treasury_instruments and
@@ -325,7 +328,7 @@ class Bond(UsTreasuryInstrument):
 
         assert (self.payment_schedule.index == reinvestment_rates.index).all()
 
-        def num_accrual_periods_left(payment_date:datetime.date) -> int:
+        def num_accrual_periods_left(payment_date: date) -> int:
             """ Helper to return the number of acrrual periods left
             between a provided payment date and the maturity date
             of the us_treasury_instruments.

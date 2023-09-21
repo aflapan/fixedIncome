@@ -6,9 +6,9 @@ from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConven
 from fixedIncome.src.scheduling_tools.schedule_enumerations import BusinessDayAdjustment
 from fixedIncome.src.curves.curve import KnotValuePair
 from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurve
+from fixedIncome.src.assets.cashflow import CashflowCollection
 
-
-class UsTreasuryInstrument(ABC):
+class UsTreasuryInstrument(ABC, CashflowCollection):
     """ A base class which defines the necessary attributes and methods
     for US Treasury Instruments (i.e. Bonds and Futures). """
 
@@ -37,7 +37,7 @@ class UsTreasuryInstrument(ABC):
         return NotImplemented('Please provide an implementation for present_value.')
 
     @abstractmethod
-    def _to_knot_value_pair(self) -> KnotValuePair:
+    def to_knot_value_pair(self) -> KnotValuePair:
         """ Returns a KnotValuePair """
         return NotImplemented('Please provide an implementation for _to_knot_value_pair.')
 

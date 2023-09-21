@@ -2,7 +2,7 @@
 This script contains the implementation of two objects related to curve construction,
 the YieldCurve object and the YieldCurveFactory object.
 """
-
+from __future__ import annotations
 
 import os
 import urllib.request
@@ -13,12 +13,14 @@ import scipy  # type: ignore
 from datetime import date
 from enum import Enum
 from typing import Callable, Optional, NamedTuple, Sequence, Iterable
+import functools
 
 from fixedIncome.src.curves.curve import Curve, KnotValuePair, EndBehavior, InterpolationMethod
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond, ONE_BASIS_POINT
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
-
+from fixedIncome.src.assets.cashflow import Payment, Cashflow, CashflowCollection, ZeroCoupon
 
 class HedgeRatio(NamedTuple):
     dv01: float
@@ -29,32 +31,29 @@ class InterpolationSpace(Enum):
     DISCOUNT_FACTOR = 0
     FORWARD_RATES = 1
     YIELD = 2
-    YIELD_TO_MATURITY = 3
-
+    CONTINUOUSLY_COMPOUNDED_YIELD = 3
+    YIELD_TO_MATURITY = 4
+    CONTINUOUSLY_COMPOUNDED_YIELD_TO_MATURITY = 5
 
 
 class YieldCurve(Curve):
     def __init__(self,
-                 interpolation_values: Iterable[UsTreasuryInstrument],
-                 quote_adjustments: Iterable[KnotValuePair],
+                 instruments: Iterable[CashflowCollection],
+                 quote_adjustments: Optional[Iterable[KnotValuePair]],
                  interpolation_method: InterpolationMethod,
                  interpolation_day_count_convention: DayCountConvention,
                  interpolation_space: InterpolationSpace,
                  reference_date: date,
                  left_end_behavior: EndBehavior = EndBehavior.ERROR,
                  right_end_behavior: EndBehavior = EndBehavior.ERROR) -> None:
-        """
-        Creates an instance of a yield curve object.
 
-        Parameters:
-            interpolation_values: pd.Series whose indices are the dates used as knot points
-            interpolation_method: A string representing the interpolation method to use. Valid inputs are
-                                  'linear', ‘quadratic’, ‘cubic’, ‘previous’, 'forward'.
-            interpolation_day_count_convention: A string representing the day count convention
-            reference_date: The date from which
-            left_end_behavior: A string determining the behavior of evaluating x values below the first
-        """
+        instruments = list(instruments)
+        quote_adjustments = list(quote_adjustments)
+        interpolation_values = [instrument.to_knot_value_pair() for instrument in instruments]
 
+        #TODO: Consider logging the adjustments
+        for kv_pair, quote_adjustment in zip(interpolation_values, quote_adjustments):
+            kv_pair.value += quote_adjustment
 
         super().__init__(interpolation_values,
                          interpolation_method,
@@ -63,71 +62,76 @@ class YieldCurve(Curve):
                          left_end_behavior,
                          right_end_behavior)
 
-
-        self.interpolation_values = interpolation_values
-        self.interpolation_method = interpolation_method
+        self.instruments = instruments
+        self.quote_adjustments = quote_adjustments
         self.interpolation_space = interpolation_space
-        self.interpolation_dcc = interpolation_day_count_convention
-        self.reference_date = reference_date
-        self.left_end_behavior = left_end_behavior
-        self.right_end_behavior = right_end_behavior
-        self.dcc_calculator_obj = DayCountCalculator()
 
 
-
-        self.knot_value_tuples_list = None
-        self._preprocess_interpolation_values()
-        self.interpolator = self._create_interpolation_object()
-
-
-    #-----------------------------------------------------------
-    # Functions for creating the interpolation method.
-
-    def _preprocess_interpolation_values(self) -> list[KnotValuePair]:
-        """
-        Pre-processes the interpolation dates into interpolation x-axis values.
-        Returns an ordered list of namedTuples (x_val, y_val) of the x-axis knot points
-        and the corresponding y values used for interpolation.
-
-        Returns a list of KnotValuePair namedTuples, sorted by knot points.
-        """
-
-        self.interpolation_values.sort_index(inplace=True) # sorts by x values
-
-        x_dates, y_values = self.interpolation_values.index.tolist(), self.interpolation_values.values.tolist()
-
-        # preprocesses dates into interpolation x axis values
-        x_values = [self.date_to_interpolation_axis(date_obj) for date_obj in x_dates]
-
-        return [KnotValuePair(knot_val, y_val) for (knot_val, y_val) in zip(x_values, y_values)]
-
-
-
-
-    def reset_interpolation_values(self, new_values: pd.Series) -> None:
-        """
-        Resets the interpolator based on new (x,y) value pairs.
-        """
-        self.interpolation_values = new_values
-        self.interpolator = self._create_interpolation_object()
-
-    #-----------------------------------------------------------------
     # present value calculators
-    def calculate_present_value(self, bond: Bond, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
+    def present_value(self, instrument: UsTreasuryInstrument, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
         """
         Wrapper function for the specific implementations of present value calculations.
+        The curve first transforms into the discount curve, and then the instrument specific
+        method is called on the instrument provided a discount curve.
         """
 
         match self.interpolation_space:
-            case 'Yield':
-                return self._calc_pv_yield_space(bond, adjustment_fxcn)
+            case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
+                #TODO: ENCODE method to transform into discount curve object
 
-            case 'Yield to Maturity':
-                return self._calc_pv_yield_to_maturity_space(bond, adjustment_fxcn)
+            case InterpolationSpace.DISCOUNT_FACTOR:
+                pass
 
             case _:
-                raise ValueError(f'PV calculation for interpolation space {self.interpolation_space} '
-                                 f'not implemented.')
+                raise ValueError(f'Interpolation space {self.interpolation_space} does not')
+
+
+
+    @functools.cached_property
+    def to_discount_curve(self, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> YieldCurve:
+        """ Method to transform the """
+
+        match self.interpolation_space:
+            case InterpolationSpace.DISCOUNT_FACTOR:
+                return self
+
+            case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
+
+                min_date = self.interpolation_values[0].date
+                max_date = self.interpolation_values[-1].date
+
+                date_range = pd.date_range(start=self.reference_date,
+                                           end=max_date,
+                                           freq='D').date
+
+                accruals = np.array([self.date_to_interpolation_axis(date_obj) for date_obj in date_range])
+                yields = np.array([self(date_obj, adjustment_fxcn) for date_obj in date_range])
+                discount_factors = np.exp(- yields * accruals)  # specific to continuously-compounded yields
+                zero_coupons = [ZeroCoupon(payment_date=date_obj, price=df)
+                                for date_obj, df in zip(date_range, discount_factors)]
+
+                return YieldCurve(instruments=zero_coupons,
+                                  quote_adjustments=None,
+                                  interpolation_method=InterpolationMethod.LINEAR,
+                                  interpolation_day_count_convention = self.interpolation_day_count_convention,
+                                  interpolation_space = InterpolationSpace.DISCOUNT_FACTOR,
+                                  reference_date = self.reference_date,
+                                  left_end_behavior = EndBehavior.ERROR,
+                                  right_end_behavior = EndBehavior.ERROR
+                                  )
+
+
+
+            case _:
+                return NotImplemented('Only DISCOUNT_FACTOR and CONTINUOUSLY_COMPOUNDED_YIELD '
+                                      'are implemented in _to_discount_curve.')
+
+
+
+
+
+    #-------------------------------------------------------------------
+
 
     def _calc_pv_yield_space(self, bond: Bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """
@@ -159,7 +163,7 @@ class YieldCurve(Curve):
     #--------------------------------------------------------------
     # functionality for bumping curves
 
-    def parallel_bump(self, bump_amount = 0.01) -> Callable[[date], float]:
+    def parallel_bump(self, bump_amount = ONE_BASIS_POINT) -> Callable[[date], float]:
         """
         Returns an adjustment function corresponding to a parallel shift (i.e. a constant of bump_amount).
         """

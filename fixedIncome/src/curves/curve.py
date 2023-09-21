@@ -128,10 +128,10 @@ class Curve(Callable):
             x_axis_val = self.date_to_interpolation_axis(date_obj)
             return self.interpolator(x_axis_val) + adjustment(date_obj)
 
-
-
-
-
-
-
+    def reset_interpolation_values(self, new_values: Iterable[KnotValuePair]) -> None:
+        """
+        Resets the interpolator based on new KnotValuePairs.
+        """
+        self.interpolation_values = sorted(list(new_values), key=lambda interp_val: interp_val.knot)
+        self._create_interpolation_object()
 

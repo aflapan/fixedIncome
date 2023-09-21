@@ -5,13 +5,17 @@ from __future__ import annotations
 from datetime import date
 from typing import Iterable, NamedTuple, Optional
 import pandas as pd
-from collections.abc import Iterable, MutableSequence
+from collections.abc import Iterable, MutableSequence, Set
 import bisect
+from enum import Enum
 
 class Payment(NamedTuple):
     payment_date: date
     payment: Optional[float] = None
 
+class ZeroCoupon(NamedTuple):
+    payment_date: date
+    price: float
 
 class Cashflow(Iterable, MutableSequence):
     """ A base class representing a cashflows. """
@@ -65,5 +69,27 @@ class Cashflow(Iterable, MutableSequence):
             raise ValueError()
 
         return cls(payments=(Payment(payment_date, payment) for payment_date, payment in zip(payment_dates, payments)))
+
+class CashflowKeys(Enum):
+    FIXED_LEG: 'fixed leg'
+    FLOATING_LEG: 'floating leg'
+    PROTECTION_LEG: 'protection leg'
+    PREMIUM_LEG: 'premium leg'
+
+class CashflowCollection(Set):
+    """
+    This is the base class from which all financial assets will be subclassed.
+    It is a bare-bones template which represents a collection of cashflows.
+    """
+    def __init__(self, cashflows: Iterable[Cashflow], cashflow_keys: Iterable[CashflowKeys]) -> None:
+
+        self.cashflow_list = list(cashflows)
+        self.keys = list(cashflow_keys)
+        self.cashflows = {key: cashflow for key, cashflow in zip(self.keys, self.cashflow_list)}
+
+
+#class ZeroCoupon(CashflowCollection):
+#    def __init__(self, price: float, payment_date: date):
+#        pass
 
 

@@ -4,7 +4,6 @@ import collections
 import pandas as pd  # type: ignore
 from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency, BusinessDayAdjustment
 
-import enum
 
 
 
