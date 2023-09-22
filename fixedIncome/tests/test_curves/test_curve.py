@@ -3,9 +3,11 @@ This file contains unit tests for the base curve object.
 """
 import pytest
 from datetime import date
-from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
-from fixedIncome.src.curves.curve import Curve, KnotValuePair, InterpolationMethod, EndBehavior
-from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
+from fixedIncome.src.assets.cashflow import ZeroCoupon
+from fixedIncome.src.curves.curve import Curve, DiscountCurve, CurveIndex, KnotValuePair, InterpolationMethod, EndBehavior
+from fixedIncome.src.curves.key_rate import KeyRate
+
 
 PASS_THRESH = 1E-8
 
@@ -93,3 +95,20 @@ def test_curve_can_evaluate_with_key_rate_adjustment() -> None:
     """
     target_val = 1.0 + key_rate.bump_val
     assert abs(curve_obj(key_rate.key_rate_date, adjustment=key_rate) - target_val) < PASS_THRESH
+
+#-------------------------------------------------------------------
+# Test discount curve
+REFERENCE_DATE = date(2023, 9, 1)
+
+first_zc = ZeroCoupon(payment_date=date(2023, 12, 25), price=0.99)
+second_zc = ZeroCoupon(payment_date=date(2024, 1, 30), price=0.98)
+third_zc = ZeroCoupon(payment_date=date(2027, 1, 1), price=0.80)
+fourth_zc = ZeroCoupon(payment_date=date(2030, 1, 1), price=0.50)
+
+zero_coupon_bonds = [first_zc, second_zc, third_zc, fourth_zc]
+
+test_discount_curve = DiscountCurve(interpolation_values=[zc.to_knot_value_pair() for zc in zero_coupon_bonds],
+                                    interpolation_method=InterpolationMethod.LINEAR,
+                                    index=CurveIndex.NONE,
+                                    interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_360,
+                                    reference_date=REFERENCE_DATE)

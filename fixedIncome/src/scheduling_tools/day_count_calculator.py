@@ -1,12 +1,6 @@
 from datetime import date
 from enum import Enum
-
-class DayCountConvention(Enum):
-    ACTUAL_OVER_360 = 0
-    ACTUAL_OVER_365 = 1
-    ACTUAL_OVER_365_POINT_25 = 2
-    ACTUAL_OVER_ACTUAL = 3
-    THIRTY_OVER_THREESIXTY = 4
+from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 
 
 class DayCountCalculator(object):

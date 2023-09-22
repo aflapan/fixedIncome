@@ -8,12 +8,13 @@ import pandas as pd
 from collections.abc import Iterable, MutableSequence, Set
 import bisect
 from enum import Enum
+from fixedIncome.src.curves.curve import KnotValuePair
 
 class Payment(NamedTuple):
     payment_date: date
     payment: Optional[float] = None
 
-class Cashflow(Iterable, MutableSequence):
+class Cashflow(Iterable):
     """ A base class representing a cashflows. """
     def __init__(self, payments: Iterable[Payment]) -> None:
         self._schedule = sorted(list(payments), key=lambda payment: payment.payment_date)
@@ -84,9 +85,13 @@ class CashflowCollection(Set):
         self.keys = list(cashflow_keys)
         self.cashflows = {key: cashflow for key, cashflow in zip(self.keys, self.cashflow_list)}
 
+    def __iter__(self):
+        """ Iterates through the cashflows in the collection. """
+        return self.cashflows.items()
+
 
 class ZeroCoupon(CashflowCollection):
-    def __init__(self, price: float, payment_date: date):
+    def __init__(self, payment_date: date, price: float):
         self._price = price
         self._payment_date = payment_date
         cashflows = [Cashflow(Payment(self._payment_date, 1.0), )]
@@ -99,5 +104,12 @@ class ZeroCoupon(CashflowCollection):
     @property
     def payment_date(self):
         return self._payment_date
+
+    def to_knot_value_pair(self) -> KnotValuePair:
+        """
+        Returns a KnotValuePair representing the
+        payment date and the price to be used for interpolating curves.
+        """
+        return KnotValuePair(knot=self.payment_date, value=self.price)
 
 

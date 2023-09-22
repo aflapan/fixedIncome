@@ -12,7 +12,7 @@ from collections.abc import Callable
 from enum import Enum
 import scipy
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
-
+from fixedIncome.src.assets.cashflow import Cashflow, Payment
 
 class InterpolationMethod(Enum):
     PREVIOUS = 'previous'
@@ -134,4 +134,49 @@ class Curve(Callable):
         """
         self.interpolation_values = sorted(list(new_values), key=lambda interp_val: interp_val.knot)
         self._create_interpolation_object()
+
+class CurveIndex(Enum):
+    NONE = -1
+    US_TREASURY = 0
+    SOFR = 1
+    TERM_SOFR_1M = 2
+    TERM_SOFR_3M = 3
+    TERM_SOFR_6M = 4
+    TERM_SOFR_12M = 5
+    FED_FUND = 6
+    LIBOR_3M = 7
+
+
+
+class DiscountCurve(Curve):
+    """
+    A generic discount curve used to compute present values of cashflows.
+    """
+    def __init__(self,
+                 interpolation_values: Iterable[KnotValuePair],
+                 interpolation_method: InterpolationMethod,
+                 index: CurveIndex,
+                 interpolation_day_count_convention: DayCountConvention,
+                 reference_date: Optional[date] = None,
+                 left_end_behavior: EndBehavior = EndBehavior.ERROR,
+                 right_end_behavior: EndBehavior = EndBehavior.ERROR
+                 ) -> None:
+
+        super().__init__(interpolation_values,
+                         interpolation_method,
+                         interpolation_day_count_convention,
+                         reference_date,
+                         left_end_behavior,
+                         right_end_behavior)
+
+        self._index = index
+
+    @property
+    def index(self):
+        return self._index
+
+    def present_value(self, cashflow: Cashflow) -> float:
+        """ Returns """
+        return sum(self(payment.payment_date) * payment
+                   for payment in cashflow if payment.payment is not None)
 

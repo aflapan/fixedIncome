@@ -15,12 +15,12 @@ from enum import Enum
 from typing import Callable, Optional, NamedTuple, Sequence, Iterable
 import functools
 
-from fixedIncome.src.curves.curve import Curve, KnotValuePair, EndBehavior, InterpolationMethod
+from fixedIncome.src.curves.curve import Curve, DiscountCurve, KnotValuePair, EndBehavior, InterpolationMethod, CurveIndex
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond, ONE_BASIS_POINT
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
-from fixedIncome.src.assets.cashflow import Payment, Cashflow, CashflowCollection, ZeroCoupon
+from fixedIncome.src.assets.cashflow import CashflowCollection
 
 class HedgeRatio(NamedTuple):
     dv01: float
@@ -77,7 +77,7 @@ class YieldCurve(Curve):
 
         match self.interpolation_space:
             case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
-                #TODO: ENCODE method to transform into discount curve object
+                pass
 
             case InterpolationSpace.DISCOUNT_FACTOR:
                 pass
@@ -88,7 +88,7 @@ class YieldCurve(Curve):
 
 
     @functools.cached_property
-    def to_discount_curve(self, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> YieldCurve:
+    def to_discount_curve(self, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> DiscountCurve:
         """ Method to transform the """
 
         match self.interpolation_space:
@@ -96,8 +96,6 @@ class YieldCurve(Curve):
                 return self
 
             case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
-
-                min_date = self.interpolation_values[0].date
                 max_date = self.interpolation_values[-1].date
 
                 date_range = pd.date_range(start=self.reference_date,
@@ -107,24 +105,20 @@ class YieldCurve(Curve):
                 accruals = np.array([self.date_to_interpolation_axis(date_obj) for date_obj in date_range])
                 yields = np.array([self(date_obj, adjustment_fxcn) for date_obj in date_range])
                 discount_factors = np.exp(- yields * accruals)  # specific to continuously-compounded yields
-                zero_coupons = [ZeroCoupon(payment_date=date_obj, price=df)
+                interpolation_values = [KnotValuePair(knot=date_obj, value=df)
                                 for date_obj, df in zip(date_range, discount_factors)]
 
-                return YieldCurve(instruments=zero_coupons,
-                                  quote_adjustments=None,
-                                  interpolation_method=InterpolationMethod.LINEAR,
-                                  interpolation_day_count_convention = self.interpolation_day_count_convention,
-                                  interpolation_space = InterpolationSpace.DISCOUNT_FACTOR,
-                                  reference_date = self.reference_date,
-                                  left_end_behavior = EndBehavior.ERROR,
-                                  right_end_behavior = EndBehavior.ERROR
-                                  )
-
-
+                return DiscountCurve(interpolation_values=interpolation_values,
+                                     interpolation_method=InterpolationMethod.LINEAR,  # because we fill the date range
+                                     index=CurveIndex.US_TREASURY,
+                                     interpolation_day_count_convention=self.interpolation_day_count_convention,
+                                     reference_date=self.reference_date,
+                                     left_end_behavior=EndBehavior.ERROR,
+                                     right_end_behavior=EndBehavior.ERROR)
 
             case _:
                 return NotImplemented('Only DISCOUNT_FACTOR and CONTINUOUSLY_COMPOUNDED_YIELD '
-                                      'are implemented in _to_discount_curve.')
+                                      'are implemented in to_discount_curve.')
 
 
 
