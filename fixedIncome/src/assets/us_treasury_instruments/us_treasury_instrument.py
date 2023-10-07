@@ -4,9 +4,9 @@ from abc import ABC, abstractmethod
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
 from fixedIncome.src.scheduling_tools.schedule_enumerations import BusinessDayAdjustment
-from fixedIncome.src.curves.curve import KnotValuePair
+from fixedIncome.src.curves.base_curve import KnotValuePair
 from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurve
-from fixedIncome.src.assets.cashflow import CashflowCollection
+from fixedIncome.src.assets.base_cashflow import CashflowCollection
 
 class UsTreasuryInstrument(ABC, CashflowCollection):
     """ A base class which defines the necessary attributes and methods

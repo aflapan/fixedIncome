@@ -9,7 +9,7 @@ from typing import Optional
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency, BusinessDayAdjustment
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.assets.cashflow import Payment, Cashflow, CashflowCollection, CashflowKeys
+from fixedIncome.src.assets.base_cashflow import Payment, Cashflow, CashflowCollection, CashflowKeys
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
 
 ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value

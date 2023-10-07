@@ -8,7 +8,6 @@ import pandas as pd
 from collections.abc import Iterable, MutableSequence, Set
 import bisect
 from enum import Enum
-from fixedIncome.src.curves.curve import KnotValuePair
 
 class Payment(NamedTuple):
     payment_date: date
@@ -68,11 +67,11 @@ class Cashflow(Iterable):
         return cls(payments=(Payment(payment_date, payment) for payment_date, payment in zip(payment_dates, payments)))
 
 class CashflowKeys(Enum):
-    SINGLE_PAYMENT: 'zero coupon'
-    FIXED_LEG: 'fixed leg'
-    FLOATING_LEG: 'floating leg'
-    PROTECTION_LEG: 'protection leg'
-    PREMIUM_LEG: 'premium leg'
+    SINGLE_PAYMENT = 'zero coupon'
+    FIXED_LEG = 'fixed leg'
+    FLOATING_LEG = 'floating leg'
+    PROTECTION_LEG = 'protection leg'
+    PREMIUM_LEG = 'premium leg'
 
 class CashflowCollection(Set):
     """
@@ -92,9 +91,10 @@ class CashflowCollection(Set):
 
 class ZeroCoupon(CashflowCollection):
     def __init__(self, payment_date: date, price: float):
-        self._price = price
         self._payment_date = payment_date
-        cashflows = [Cashflow(Payment(self._payment_date, 1.0), )]
+        self._price = price
+        single_payment_iterable = [Payment(self._payment_date, 1.0)]
+        cashflows = [Cashflow(single_payment_iterable)]  # a singleton cashflow of $1
         cashflow_keys = [CashflowKeys.SINGLE_PAYMENT]
         super().__init__(cashflows, cashflow_keys)
 
@@ -105,11 +105,23 @@ class ZeroCoupon(CashflowCollection):
     def payment_date(self):
         return self._payment_date
 
-    def to_knot_value_pair(self) -> KnotValuePair:
+    def __len__(self):
+        return len(self.cashflows)
+
+    def __contains__(self, key: CashflowKeys) -> bool:
         """
-        Returns a KnotValuePair representing the
-        payment date and the price to be used for interpolating curves.
+        Returns whether the cash flow collection contains the provided Key
+        in the dictionary of key: Cashflow pairings.
         """
-        return KnotValuePair(knot=self.payment_date, value=self.price)
+        return key in self.cashflows
+
+    def to_knot_value_pair(self) -> tuple[date, float]:
+        """
+        Converts the zero-coupon bond to a (date, float)
+        tuple to be used by curves to interpolate.
+        """
+        return self.payment_date, self.price
+
+
 
 

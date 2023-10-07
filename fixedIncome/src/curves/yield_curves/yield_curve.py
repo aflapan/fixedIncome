@@ -15,12 +15,12 @@ from enum import Enum
 from typing import Callable, Optional, NamedTuple, Sequence, Iterable
 import functools
 
-from fixedIncome.src.curves.curve import Curve, DiscountCurve, KnotValuePair, EndBehavior, InterpolationMethod, CurveIndex
+from fixedIncome.src.curves.base_curve import Curve, DiscountCurve, KnotValuePair, EndBehavior, InterpolationMethod, CurveIndex
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond, ONE_BASIS_POINT
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
-from fixedIncome.src.assets.cashflow import CashflowCollection
+from fixedIncome.src.assets.base_cashflow import CashflowCollection
 
 class HedgeRatio(NamedTuple):
     dv01: float

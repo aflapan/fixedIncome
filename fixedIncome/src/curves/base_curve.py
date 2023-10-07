@@ -7,12 +7,12 @@ Each subclass will provide additional functionality.
 """
 
 from datetime import date
-from typing import NamedTuple, Iterable, Optional, Union
+from typing import NamedTuple, Iterable, Optional
 from collections.abc import Callable
 from enum import Enum
 import scipy
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
-from fixedIncome.src.assets.cashflow import Cashflow, Payment
+from fixedIncome.src.assets.base_cashflow import Cashflow
 
 class InterpolationMethod(Enum):
     PREVIOUS = 'previous'
@@ -33,9 +33,10 @@ class KnotValuePair(NamedTuple):
 
 class Curve(Callable):
     """
-    A base curve object which interpolates between the provided date, value pairs and
+    A base curve object which interpolates between the provided (date, value) pairs and
     which handles the necessary conversions from date values into floats.
     Subsequent curve objects (i.e. interests rate, survival, and yield curves)
+    will subclass and provide domain-specific functionality.
     """
 
     def __init__(self,
@@ -176,7 +177,10 @@ class DiscountCurve(Curve):
         return self._index
 
     def present_value(self, cashflow: Cashflow) -> float:
-        """ Returns """
-        return sum(self(payment.payment_date) * payment
+        """
+        Returns the present value of the provided cashflow
+        when discounting the payment amounts on the discount curve.
+        """
+        return sum(self(payment.payment_date) * payment.payment
                    for payment in cashflow if payment.payment is not None)
 

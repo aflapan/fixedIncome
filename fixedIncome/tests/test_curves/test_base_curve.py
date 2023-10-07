@@ -1,11 +1,18 @@
 """
-This file contains unit tests for the base curve object.
+This file contains unit tests for the base curve objects found in
+fixedIncome.src.curves.base_curve.py
 """
 import pytest
 from datetime import date
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
-from fixedIncome.src.assets.cashflow import ZeroCoupon
-from fixedIncome.src.curves.curve import Curve, DiscountCurve, CurveIndex, KnotValuePair, InterpolationMethod, EndBehavior
+from fixedIncome.src.assets.base_cashflow import ZeroCoupon, CashflowKeys
+from fixedIncome.src.curves.base_curve import (KnotValuePair,
+                                               Curve,
+                                               EndBehavior,
+                                               InterpolationMethod,
+                                               CurveIndex,
+                                               DiscountCurve)
+
 from fixedIncome.src.curves.key_rate import KeyRate
 
 
@@ -96,6 +103,7 @@ def test_curve_can_evaluate_with_key_rate_adjustment() -> None:
     target_val = 1.0 + key_rate.bump_val
     assert abs(curve_obj(key_rate.key_rate_date, adjustment=key_rate) - target_val) < PASS_THRESH
 
+
 #-------------------------------------------------------------------
 # Test discount curve
 REFERENCE_DATE = date(2023, 9, 1)
@@ -106,8 +114,9 @@ third_zc = ZeroCoupon(payment_date=date(2027, 1, 1), price=0.80)
 fourth_zc = ZeroCoupon(payment_date=date(2030, 1, 1), price=0.50)
 
 zero_coupon_bonds = [first_zc, second_zc, third_zc, fourth_zc]
+interpolation_values = [KnotValuePair(*zc.to_knot_value_pair()) for zc in zero_coupon_bonds]
 
-test_discount_curve = DiscountCurve(interpolation_values=[zc.to_knot_value_pair() for zc in zero_coupon_bonds],
+test_discount_curve = DiscountCurve(interpolation_values=interpolation_values,
                                     interpolation_method=InterpolationMethod.LINEAR,
                                     index=CurveIndex.NONE,
                                     interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_360,

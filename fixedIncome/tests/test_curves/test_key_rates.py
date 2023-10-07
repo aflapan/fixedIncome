@@ -1,5 +1,6 @@
 """
-This file contains the unit tests for the KeyRate and KeyRateCollection objects.
+This file contains the unit tests for the KeyRate and KeyRateCollection objects
+found in fixedIncome.src.curves.key_rates.py
 """
 
 from datetime import date
