@@ -7,28 +7,11 @@ Each subclass will provide additional functionality.
 """
 
 from datetime import date
-from typing import NamedTuple, Iterable, Optional
+from typing import Iterable, Optional
 from collections.abc import Callable
-from enum import Enum
 import scipy
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
-from fixedIncome.src.assets.base_cashflow import Cashflow
-
-class InterpolationMethod(Enum):
-    PREVIOUS = 'previous'
-    LINEAR = 'linear'
-    QUADRATIC_SPLINE = 'quadratic'
-    CUBIC_SPLINE = 'cubic'
-
-
-class EndBehavior(Enum):
-    ERROR = 0
-    CONSTANT = 1
-
-
-class KnotValuePair(NamedTuple):
-    knot: date
-    value: float
+from fixedIncome.src.curves.curve_enumerations import KnotValuePair, CurveIndex, EndBehavior, InterpolationMethod
 
 
 class Curve(Callable):
@@ -136,18 +119,6 @@ class Curve(Callable):
         self.interpolation_values = sorted(list(new_values), key=lambda interp_val: interp_val.knot)
         self._create_interpolation_object()
 
-class CurveIndex(Enum):
-    NONE = -1
-    US_TREASURY = 0
-    SOFR = 1
-    TERM_SOFR_1M = 2
-    TERM_SOFR_3M = 3
-    TERM_SOFR_6M = 4
-    TERM_SOFR_12M = 5
-    FED_FUND = 6
-    LIBOR_3M = 7
-
-
 
 class DiscountCurve(Curve):
     """
@@ -176,11 +147,9 @@ class DiscountCurve(Curve):
     def index(self):
         return self._index
 
-    def present_value(self, cashflow: Cashflow) -> float:
+    def present_value(self, cashflow) -> float:
         """
         Returns the present value of the provided cashflow
         when discounting the payment amounts on the discount curve.
         """
-        return sum(self(payment.payment_date) * payment.payment
-                   for payment in cashflow if payment.payment is not None)
-
+        return cashflow.present_value(self)

@@ -5,7 +5,7 @@ fixedIncome.src.curves.base_curve.py
 import pytest
 from datetime import date
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
-from fixedIncome.src.assets.base_cashflow import ZeroCoupon, CashflowKeys
+from fixedIncome.src.assets.base_cashflow import ZeroCoupon
 from fixedIncome.src.curves.base_curve import (KnotValuePair,
                                                Curve,
                                                EndBehavior,
@@ -114,10 +114,56 @@ third_zc = ZeroCoupon(payment_date=date(2027, 1, 1), price=0.80)
 fourth_zc = ZeroCoupon(payment_date=date(2030, 1, 1), price=0.50)
 
 zero_coupon_bonds = [first_zc, second_zc, third_zc, fourth_zc]
-interpolation_values = [KnotValuePair(*zc.to_knot_value_pair()) for zc in zero_coupon_bonds]
+interpolation_values = [zc.to_knot_value_pair() for zc in zero_coupon_bonds]
 
-test_discount_curve = DiscountCurve(interpolation_values=interpolation_values,
-                                    interpolation_method=InterpolationMethod.LINEAR,
-                                    index=CurveIndex.NONE,
-                                    interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_360,
-                                    reference_date=REFERENCE_DATE)
+discount_curve = DiscountCurve(interpolation_values=interpolation_values,
+                               interpolation_method=InterpolationMethod.LINEAR,
+                               index=CurveIndex.NONE,
+                               interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_360,
+                               reference_date=REFERENCE_DATE)
+
+def test_calling_discount_curve_prices_zero_coupons_exactly() -> None:
+    """
+    Tests that the discount curve reprices the interpolated
+    zero-coupon prices within numerical error.
+    """
+    assert all(abs(discount_curve(zc.payment_date) - zc.price) < PASS_THRESH
+               for zc in zero_coupon_bonds)
+
+
+def test_present_value_of_zero_coupon_cashflows_are_prices() -> None:
+    """
+    Tests that the present value of the cashflow in each zero coupon bond
+    equals its price.
+    """
+    assert all(abs(discount_curve.present_value(zc) - zc.price) < PASS_THRESH
+           for zc in zero_coupon_bonds)
+
+
+def test_discount_curve_reprices_zero_coupons_for_all_interpolation_methods_and_day_count_conventions() -> None:
+    """
+    Tests that the zero coupon prices are recreated within numerical precision
+    for each discount interpolation method and day count convention.
+    """
+    methods_repriced_exactly = []
+    for method in InterpolationMethod:
+        for dcc in DayCountConvention:
+            curve = DiscountCurve(interpolation_values=interpolation_values,
+                                  interpolation_method=method,
+                                  index=CurveIndex.NONE,
+                                  interpolation_day_count_convention=dcc,
+                                  reference_date=REFERENCE_DATE)
+
+            method_passed = all(abs(curve.present_value(zc) - zc.price) < PASS_THRESH
+                                for zc in zero_coupon_bonds)
+            methods_repriced_exactly.append(method_passed)
+
+    assert all(methods_repriced_exactly)
+
+def test_length_of_zero_coupon_is_one() -> None:
+    """ Tests that the __len__ method correctly returns 1 for a
+    zero-coupon bond.
+    """
+    assert len(first_zc) == 1
+
+

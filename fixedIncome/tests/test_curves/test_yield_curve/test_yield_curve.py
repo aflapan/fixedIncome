@@ -3,7 +3,7 @@ This file contains the unit tests
 """
 import datetime
 from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurveFactory
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import Bond
 from fixedIncome.src.curves.key_rate import KeyRate
 
 # Create a series of test objects.

@@ -17,8 +17,7 @@ import functools
 
 from fixedIncome.src.curves.base_curve import Curve, DiscountCurve, KnotValuePair, EndBehavior, InterpolationMethod, CurveIndex
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_bond import Bond, ONE_BASIS_POINT
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryBond, ONE_BASIS_POINT
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 from fixedIncome.src.assets.base_cashflow import CashflowCollection
 
@@ -68,7 +67,8 @@ class YieldCurve(Curve):
 
 
     # present value calculators
-    def present_value(self, instrument: UsTreasuryInstrument, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
+    def present_value(self, instrument: UsTreasuryInstrument,
+                      adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
         """
         Wrapper function for the specific implementations of present value calculations.
         The curve first transforms into the discount curve, and then the instrument specific
@@ -106,7 +106,7 @@ class YieldCurve(Curve):
                 yields = np.array([self(date_obj, adjustment_fxcn) for date_obj in date_range])
                 discount_factors = np.exp(- yields * accruals)  # specific to continuously-compounded yields
                 interpolation_values = [KnotValuePair(knot=date_obj, value=df)
-                                for date_obj, df in zip(date_range, discount_factors)]
+                                        for date_obj, df in zip(date_range, discount_factors)]
 
                 return DiscountCurve(interpolation_values=interpolation_values,
                                      interpolation_method=InterpolationMethod.LINEAR,  # because we fill the date range

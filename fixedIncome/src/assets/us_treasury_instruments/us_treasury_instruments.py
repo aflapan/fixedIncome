@@ -1,4 +1,4 @@
-from datetime import date # type: ignore
+from datetime import date  # type: ignore
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 import math  # type: ignore
@@ -7,56 +7,49 @@ import bisect
 from typing import Optional
 
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
-from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency, BusinessDayAdjustment
+from fixedIncome.src.scheduling_tools.schedule_enumerations import (PaymentFrequency,
+                                                                    BusinessDayAdjustment,
+                                                                    DayCountConvention,
+                                                                    SettlementConvention)
+
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.assets.base_cashflow import Payment, Cashflow, CashflowCollection, CashflowKeys
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instrument import UsTreasuryInstrument
+from fixedIncome.src.curves.curve_enumerations import KnotValuePair
+from fixedIncome.src.curves.base_curve import DiscountCurve
+from fixedIncome.src.assets.base_cashflow import CashflowCollection, CashflowKeys, Cashflow, Payment
+
 
 ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value
 
 
-class Bond(UsTreasuryInstrument):
+class UsTreasuryBond(CashflowCollection):
 
     def __init__(self,
-                 market_quote: float,
+                 price: float,
                  coupon: float,
                  principal: int,
                  tenor: str,
                  purchase_date: date,
                  maturity_date: date,
                  cusip: Optional[str] = None,
-                 settlement_convention: str = 'T+1 business',
-                 payment_frequency: PaymentFrequency = 'semi-annual',
-                 day_count_convention: str = 'act/act',
+                 settlement_convention: SettlementConvention = SettlementConvention.T_PLUS_ONE_BUSINESS,
+                 payment_frequency: PaymentFrequency = PaymentFrequency.SEMI_ANNUAL,
+                 day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_OVER_ACTUAL,
                  business_day_adjustment: BusinessDayAdjustment = BusinessDayAdjustment.FOLLOWING) -> None:
-        """
-        Creates an instance of the us_treasury_instruments class given the us_treasury_instruments specifics detailed below.
 
-        Parameters:
-            price: The market quote of the treasury us_treasury_instruments. Quoted as per market convention.
-            coupon: A float representing the coupon rate in percent (%)
-            principal: A int representing the principal amount of the us_treasury_instruments, on which coupon payments are made.
-            purchase_date: The date on which the purchase the U.S. Treasury Bond is made.
-            settlement_convention: A str representing the settlement convention.
-                                   Valid strings are 'T+0', 'T+1', and 'T+2'.
-            maturity_date: The date on which the us_treasury_instruments matures, i.e. the date where the principal is returned.
-        """
-        cashflowkeys = [CashflowKeys.FIXED_LEG]
-
-
-        self.market_quote = market_quote
+        self.price = price
         self.coupon = coupon
         self.principal = principal
         self.tenor = tenor
         self.purchase_date = purchase_date
+        self.maturity_date = maturity_date
         self.cusip = cusip
         self.settlement_convention = settlement_convention
-        self.payment_frequency = payment_frequency
-        self.maturity_date = maturity_date
         self.day_count_convention = day_count_convention
         self.business_day_adjustment = business_day_adjustment
 
-        self.num_payments_per_year = self._calculate_num_payments_per_year()
+        self.payment_frequency = payment_frequency
+
+        self.num_payments_per_year = self.payment_frequency.value  # enumeration is encoded with these values
         self.coupon_payment = self._calculate_coupon_payment()   # coupon payment in USD ($)
 
         self.scheduler_obj = Scheduler(
@@ -67,14 +60,25 @@ class Bond(UsTreasuryInstrument):
             self.payment_frequency,
             self.business_day_adjustment
         )
-
+        self.settlement_date = self.scheduler_obj.settlement_date
         self.payment_schedule = self.scheduler_obj.get_payment_schedule()
         self._add_payments_to_schedule()
         self.dated_date = self.scheduler_obj.dated_date
-        self.settlement_date = self.scheduler_obj.settlement_date
         self.accrued_interest = self.calculate_accrued_interest()
         self.full_price = self.get_full_price()
-       # self.continuously_compounding_rate = self.calculate_continuously_compounding_rate()
+
+
+        coupon_dates = [date_obj for (payment_type, date_obj) in
+                        zip(self.payment_schedule['Date Type'], self.payment_schedule['Adjusted Date'])
+                        if payment_type == 'coupon']
+
+        coupon_cashflow = Cashflow([Payment(payment_date=coupon_date, payment=self.coupon)
+                                    for coupon_date in coupon_dates])
+
+        principal_repayment_cashflow = Cashflow([Payment(payment_date=self.maturity_date, payment=self.principal)])
+        cashflows = [coupon_cashflow, principal_repayment_cashflow]
+        cashflow_keys = [CashflowKeys.COUPON_PAYMENTS, CashflowKeys.SINGLE_PAYMENT]  # single payment is principal
+        super().__init__(cashflows, cashflow_keys)
 
     def __repr__(self) -> str:
         string_rep = f'Bond(price={self.price},\ncoupon={self.coupon},\nprincipal={self.principal},\n' \
@@ -85,10 +89,26 @@ class Bond(UsTreasuryInstrument):
 
         return string_rep
 
+    #-------------------------------------------------------------------------
+    # Interface methods
+    def to_knot_value_pair(self) -> KnotValuePair:
+        """
+        Returns a knot-value pair of the full (dirty) price which includes
+        accrued interest and the maturity date.
+        """
+        return KnotValuePair(knot=self.maturity_date, value=self.full_price)
+
+    def present_value(self, curve: DiscountCurve) -> float:
+        """
+        Returns the sum of the discounted coupon payments and principal repayment.
+        """
+        present_value_coupons = curve.present_value(self[CashflowKeys.COUPON_PAYMENTS])
+        present_value_principal = curve.present_value(self[CashflowKeys.SINGLE_PAYMENT])
+
+        return present_value_coupons + present_value_principal
+
     #--------------------------------------------------------------------------
     # Pricing utility functions
-
-
     def calculate_accrued_interest(self) -> float:
         """
         Computes the amount of accrued interest between the last payment date
@@ -188,7 +208,7 @@ class Bond(UsTreasuryInstrument):
 
     def calculate_present_value_for_fixed_yield(self, yield_rate, purchase_date: date = None) -> float:
         """
-        Calculates the present value of us_treasury_instruments cash flows
+        Calculates the present value of treasury bond cash flows
         when discount factors are constructed from compounding
         at the provided rate.
 
@@ -236,15 +256,17 @@ class Bond(UsTreasuryInstrument):
 
         # Check this in the case of zero-coupon us_treasury_instruments
         solution = scipy.optimize.root(lambda yield_rate:
-                                       self.calculate_present_value_for_fixed_yield(yield_rate, purchase_date) - self.full_price,
+                                       self.calculate_present_value_for_fixed_yield(yield_rate, purchase_date)
+                                       - self.full_price,
                                        x0=np.array([0.0]),
                                        tol=1E-10)
 
         return solution['x'].item()
 
 
-    def calculate_continuously_compounded_yield_to_maturity(self, purchase_date: date = None,
-                                                dcc: str = 'act/act') -> float:
+    def calculate_continuously_compounded_yield_to_maturity(
+            self, purchase_date: date = None, dcc: DayCountConvention = DayCountConvention.ACTUAL_OVER_ACTUAL
+    ) -> float:
         """
         Calculates the continuously-compounding rate in percent (%) for the given day-count-convention
         which results in the market price of the us_treasury_instruments.
@@ -287,24 +309,17 @@ class Bond(UsTreasuryInstrument):
         """
         ytm = self.calculate_yield_to_maturity(purchase_date)
 
-        upper_bumped_ytm = ytm + self.ONE_BASIS_POINT/2
+        upper_bumped_ytm = ytm + ONE_BASIS_POINT/2
         upper_bumped_price = self.calculate_present_value_for_fixed_yield(yield_rate=upper_bumped_ytm,
                                                                           purchase_date=purchase_date)
 
-        lower_bumped_ytm = ytm - self.ONE_BASIS_POINT/2
+        lower_bumped_ytm = ytm - ONE_BASIS_POINT/2
         lower_bumped_price = self.calculate_present_value_for_fixed_yield(yield_rate=lower_bumped_ytm,
                                                                           purchase_date=purchase_date)
 
-        price_deriv = (upper_bumped_price - lower_bumped_price)/self.ONE_BASIS_POINT
+        price_deriv = (upper_bumped_price - lower_bumped_price)/ONE_BASIS_POINT
         return -price_deriv/self.full_price
 
-
-
-    #-----------------------------------------------------------------------------
-    # Coupon calculations given yield to maturity
-    def calculate_coupon_from_ytm(self, yield_to_maturity) -> None:
-
-        pass
 
     #---------------------------------------------------------------------------
 
@@ -339,7 +354,7 @@ class Bond(UsTreasuryInstrument):
             return 2 * diff_in_years + int(math.ceil(diff_in_months/6))
 
         powers = pd.Series([num_accrual_periods_left(date) for date in self.payment_schedule.index],
-                           index = self.payment_schedule.index, name='Number of Acrual Periods')
+                           index=self.payment_schedule.index, name='Number of Acrual Periods')
 
         growth_factors = (1 + reinvestment_rates / (2 * 100)) ** powers
 
@@ -408,35 +423,6 @@ class Bond(UsTreasuryInstrument):
         return self.payment_schedule
 
 
-    def _calculate_num_payments_per_year(self) -> int:
-        """
-        Returns an integer representing the number of coupon payments
-        made by the us_treasury_instruments per year. Dependent on the provided string
-        `payment_frequency', and the results table is
-
-        'zero-coupon' -> 0
-        `annual` -> 1
-        'semi-annual' -> 2
-        'quarterly' -> 4
-        """
-
-        match self.payment_frequency:
-            case 'zero-coupon':
-                return 0
-
-            case 'annual':
-                return 1
-
-            case 'semi-annual':
-                return 2
-
-            case 'quarterly':
-                return 4
-
-            case _:
-                raise ValueError(f'{self.payment_frequency} is not a valid payment frequency.')
-
-
     def _calculate_coupon_payment(self) -> float:
         """
         Calculates the coupon payment in USD ($).
@@ -451,11 +437,12 @@ class Bond(UsTreasuryInstrument):
 
         match self.payment_frequency:
 
-            case 'zero-coupon':
+            case PaymentFrequency.ZERO_COUPON:
                 return 0
 
             case _:
                 return self.principal * self.coupon / (100 * self.num_payments_per_year)
+
 
 
 

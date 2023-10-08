@@ -3,15 +3,20 @@ A base class to represent a cashflow consisting of payment dates and payment amo
 """
 from __future__ import annotations
 from datetime import date
-from typing import Iterable, NamedTuple, Optional
+from typing import NamedTuple, Optional
 import pandas as pd
-from collections.abc import Iterable, MutableSequence, Set
+from collections.abc import Iterable, Set
 import bisect
 from enum import Enum
+from abc import abstractmethod
+from fixedIncome.src.curves.curve_enumerations import KnotValuePair
+from fixedIncome.src.curves.base_curve import DiscountCurve
+
 
 class Payment(NamedTuple):
     payment_date: date
     payment: Optional[float] = None
+
 
 class Cashflow(Iterable):
     """ A base class representing a cashflows. """
@@ -53,6 +58,14 @@ class Cashflow(Iterable):
         return pd.DataFrame(zip(self.get_payment_dates(), self.get_payment_amounts()),
                             columns=['Payment Dates', 'Payments'])
 
+    def present_value(self, discount_curve: DiscountCurve) -> float:
+        """
+        Calculates the present value of the cash flow based on discounting
+        payment amounts using the provided discount curve.
+        """
+        return sum(discount_curve(payment.payment_date) * payment.payment
+                   for payment in self if payment.payment is not None)
+
     @classmethod
     def create_from_date_and_float_iterables(cls,
                                              payment_dates: Iterable[date],
@@ -68,6 +81,7 @@ class Cashflow(Iterable):
 
 class CashflowKeys(Enum):
     SINGLE_PAYMENT = 'zero coupon'
+    COUPON_PAYMENTS = 'coupon payments'
     FIXED_LEG = 'fixed leg'
     FLOATING_LEG = 'floating leg'
     PROTECTION_LEG = 'protection leg'
@@ -84,9 +98,43 @@ class CashflowCollection(Set):
         self.keys = list(cashflow_keys)
         self.cashflows = {key: cashflow for key, cashflow in zip(self.keys, self.cashflow_list)}
 
+    def __len__(self):
+        """ Returns the number of cashflows in the collection. """
+        return len(self.cashflows)
+
+    def __contains__(self, key: CashflowKeys) -> bool:
+        """
+        Returns whether the cash flow collection contains the provided Key
+        in the dictionary of key: Cashflow pairings.
+        """
+        return key in self.cashflows
     def __iter__(self):
         """ Iterates through the cashflows in the collection. """
         return self.cashflows.items()
+
+    def __getitem__(self, item) -> Cashflow:
+        """
+        Allows one to index by the Cashflow key
+        and obtain the corresponding individual cash flow.
+        """
+        return self.cashflows[item]
+
+    @abstractmethod
+    def to_knot_value_pair(self) -> KnotValuePair:
+        """
+        An abstract method which unambiguously maps the cash flow collection
+        to a knot-value pair to be used in curve interpolation.
+        """
+        return NotImplemented('Please provide an implementation for to_knot_value_pair.')
+
+    @abstractmethod
+    def present_value(self, discount_curve: DiscountCurve) -> float:
+        """
+        An abstract method which provides an instrument-specific
+        method for computing present values of the cash flow collection
+        on a discount curve.
+        """
+        return NotImplemented('Please provide an implementation for present_value.')
 
 
 class ZeroCoupon(CashflowCollection):
@@ -105,23 +153,18 @@ class ZeroCoupon(CashflowCollection):
     def payment_date(self):
         return self._payment_date
 
-    def __len__(self):
-        return len(self.cashflows)
 
-    def __contains__(self, key: CashflowKeys) -> bool:
+    def to_knot_value_pair(self) -> KnotValuePair:
         """
-        Returns whether the cash flow collection contains the provided Key
-        in the dictionary of key: Cashflow pairings.
+        Converts the zero-coupon bond to a KnotValuePair
+        NamedTuple to be used by curves to interpolate.
         """
-        return key in self.cashflows
+        return KnotValuePair(knot=self.payment_date, value=self.price)
 
-    def to_knot_value_pair(self) -> tuple[date, float]:
+    def present_value(self, discount_curve: DiscountCurve) -> float:
         """
-        Converts the zero-coupon bond to a (date, float)
-        tuple to be used by curves to interpolate.
+        Calculates the present value of the zero-coupon payment amount
+        on the provided discount curve.
         """
-        return self.payment_date, self.price
-
-
-
+        return self[CashflowKeys.SINGLE_PAYMENT].present_value(discount_curve)
 
