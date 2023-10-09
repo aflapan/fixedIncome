@@ -15,7 +15,7 @@ def main(bond_collection, curve_factory) -> None:
     # Yield Curve
 
     yield_curve = curve_factory.construct_yield_curve(bond_collection,
-                                                      interpolation_method=InterpolationMethod.CUBIC_SPLINE,
+                                                      interpolation_method=InterpolationMethod.LINEAR,
                                                       reference_date=purchase_date)
     # Trial Key Rate to test bumping Yield Curve
     four_wk_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
@@ -60,11 +60,11 @@ def main(bond_collection, curve_factory) -> None:
 
     key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,
                      thirty_yr_kr]
-    kr_collection = KeyRateCollection(key_rate_list)
+    #kr_collection = KeyRateCollection(key_rate_list)
     #kr_collection._set_dates_in_collection()
 
-    yield_curve.plot(adjustment=kr_collection)
-    yield_curve.plot_price_curve(thirty_yr)
+    yield_curve.plot(adjustment=two_yr_kr)
+    #yield_curve.plot_price_curve(thirty_yr)
 
     # DV01 and convexity calculations
 
@@ -97,14 +97,30 @@ if __name__ == '__main__':
 
     # Four Week
     four_wk = UsTreasuryBond(price=99.648833,
+                             coupon=0.00,
+                             principal=100,
+                             tenor='1M',
+                             payment_frequency=PaymentFrequency.ZERO_COUPON,
+                             purchase_date=purchase_date,
+                             maturity_date=date(2023, 3, 28))
+
+    three_month = UsTreasuryBond(price=98.63,
                    coupon=0.00,
                    principal=100,
-                   tenor='1M',
+                   tenor='3M',
                    payment_frequency=PaymentFrequency.ZERO_COUPON,
                    purchase_date=purchase_date,
-                   maturity_date=date(2023, 3, 28))
+                   maturity_date=date(2023, 5, 28))
 
-    one_yr = UsTreasuryBond(price=95.151722,
+    six_month = UsTreasuryBond(price=97.20,
+                   coupon=0.00,
+                   principal=100,
+                   tenor='6M',
+                   payment_frequency=PaymentFrequency.ZERO_COUPON,
+                   purchase_date=purchase_date,
+                   maturity_date=date(2023, 8, 28))
+
+    one_yr = UsTreasuryBond(price=94.724,
                   coupon=0.00,
                   principal=100,
                   tenor='1Y',
@@ -113,15 +129,15 @@ if __name__ == '__main__':
                   maturity_date=date(2024, 2, 22))
 
     # Two Year
-    two_yr = UsTreasuryBond(price=99.909356,
-                  coupon=4.625,
+    two_yr = UsTreasuryBond(price=99.85,  # need to
+                  coupon=5.00,
                   principal=100,
                   tenor='2Y',
                   purchase_date=purchase_date,
                   maturity_date=date(2025, 2, 28))
 
     # Three Year
-    three_yr = UsTreasuryBond(price=99.795799,
+    three_yr = UsTreasuryBond(price=99.0,
                     coupon=4.0000,
                     principal=100,
                     tenor='3Y',
@@ -129,15 +145,15 @@ if __name__ == '__main__':
                     maturity_date=date(2026, 2, 15))
 
     # Five Year
-    five_yr = UsTreasuryBond(price=99.511842,
-                   coupon=4.000,
+    five_yr = UsTreasuryBond(price=99.42,
+                   coupon=4.63,
                    principal=100,
                    tenor='5Y',
                    purchase_date=purchase_date,
                    maturity_date=date(2028, 2, 28))
 
     # Seven Year
-    seven_yr = UsTreasuryBond(price=99.625524,
+    seven_yr = UsTreasuryBond(price=90.0,
                     coupon=4.000,
                     principal=100,
                     tenor='7Y',
@@ -145,31 +161,41 @@ if __name__ == '__main__':
                     maturity_date=date(2030, 2, 28))
 
     # Ten Year
-    ten_yr = UsTreasuryBond(price=99.058658,
-                  coupon=3.5000,
+    ten_yr = UsTreasuryBond(price=92.80,
+                  coupon=3.88,
                   principal=100,
                   tenor='10Y',
                   purchase_date=purchase_date,
                   maturity_date=date(2033, 2, 15))
 
     # Twenty Year
-    twenty_yr = UsTreasuryBond(price=98.601167,
-                     coupon=3.875,
+    twenty_yr = UsTreasuryBond(price=90.0,
+                     coupon=5.13,
                      principal=100,
                      tenor='20Y',
                      purchase_date=purchase_date,
                      maturity_date=date(2043, 2, 15))
 
     # Thirty Year
-    thirty_yr = UsTreasuryBond(price=98.898317,
-                     coupon=3.625,
+    thirty_yr = UsTreasuryBond(price=86.95,
+                     coupon=4.13,
                      principal=100,
                      tenor='30Y',
                      purchase_date=purchase_date,
                      maturity_date=date(2053, 2, 15))
 
     bond_list = [
-        four_wk, one_yr, two_yr, three_yr, five_yr, seven_yr, ten_yr, twenty_yr, thirty_yr
+        four_wk,
+        three_month,
+        six_month,
+        one_yr,
+        two_yr,
+        three_yr,
+        five_yr,
+        seven_yr,
+        ten_yr,
+        twenty_yr,
+        thirty_yr
     ]
 
     main(bond_list, curve_factory_obj)

@@ -4,6 +4,7 @@ the YieldCurve object and the YieldCurveFactory object.
 """
 from __future__ import annotations
 
+import bisect
 import os
 import urllib.request
 import numpy as np  # type: ignore
@@ -63,6 +64,7 @@ class YieldCurve(Curve):
         self.instruments = instruments
         self.quote_adjustments = quote_adjustments
         self.interpolation_space = interpolation_space
+        self.discount_curve: Optional[DiscountCurve] = None
 
 
     # present value calculators
@@ -88,13 +90,19 @@ class YieldCurve(Curve):
                 interpolation_values = [KnotValuePair(knot=kv_pair.knot, value=self(kv_pair.knot, adjustment_fxcn))
                                         for kv_pair in self.interpolation_values]
 
-                return DiscountCurve(interpolation_values=interpolation_values,
-                                     interpolation_method=self.interpolation_method,
-                                     index=CurveIndex.US_TREASURY,
-                                     interpolation_day_count_convention=self.interpolation_day_count_convention,
-                                     reference_date=self.reference_date,
-                                     left_end_behavior=EndBehavior.ERROR,
-                                     right_end_behavior=EndBehavior.ERROR)
+                if self.discount_curve is None:
+
+                    self.discount_curve = DiscountCurve(interpolation_values=interpolation_values,
+                                                        interpolation_method=self.interpolation_method,
+                                                        index=CurveIndex.US_TREASURY,
+                                                        interpolation_day_count_convention=self.interpolation_day_count_convention,
+                                                        reference_date=self.reference_date,
+                                                        left_end_behavior=EndBehavior.ERROR,
+                                                        right_end_behavior=EndBehavior.ERROR)
+                else:
+                    self.discount_curve.reset_interpolation_values(interpolation_values)
+
+                return self.discount_curve
 
             case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
                 max_date = self.interpolation_values[-1].knot
@@ -109,13 +117,19 @@ class YieldCurve(Curve):
                 interpolation_values = [KnotValuePair(knot=date_obj, value=df)
                                         for date_obj, df in zip(date_range, discount_factors)]
 
-                return DiscountCurve(interpolation_values=interpolation_values,
-                                     interpolation_method=InterpolationMethod.LINEAR,  # because we fill the date range
-                                     index=CurveIndex.US_TREASURY,
-                                     interpolation_day_count_convention=self.interpolation_day_count_convention,
-                                     reference_date=self.reference_date,
-                                     left_end_behavior=EndBehavior.ERROR,
-                                     right_end_behavior=EndBehavior.ERROR)
+                if self.discount_curve is None:
+                    self.discount_curve = DiscountCurve(interpolation_values=interpolation_values,
+                                                        interpolation_method=InterpolationMethod.LINEAR,  # because we fill the date range
+                                                        index=CurveIndex.US_TREASURY,
+                                                        interpolation_day_count_convention=self.interpolation_day_count_convention,
+                                                        reference_date=self.reference_date,
+                                                        left_end_behavior=EndBehavior.ERROR,
+                                                        right_end_behavior=EndBehavior.ERROR)
+
+                else:
+                    self.discount_curve.reset_interpolation_values(interpolation_values)
+
+                return self.discount_curve
 
             case _:
                 return NotImplemented('Only DISCOUNT_FACTOR and CONTINUOUSLY_COMPOUNDED_YIELD '
@@ -177,13 +191,12 @@ class YieldCurve(Curve):
         Formula is
             deriv = (PV(offset+half basis point) - PV(offset-half basis Point))/(0.005 - -0.005)
         """
-        half_bp_adjustment = self.parallel_bump(bump_amount=offset + 0.005)  # unit is in %, so 0.005 = half a basis point
+        half_bp_adjustment = self.parallel_bump(bump_amount=offset + ONE_BASIS_POINT/2)
         pv_plus_half_bp = self.present_value(bond, adjustment_fxcn=half_bp_adjustment)
-
-        negative_half_bp_adjustment = self.parallel_bump(bump_amount=offset - 0.005)
+        negative_half_bp_adjustment = self.parallel_bump(bump_amount=offset - ONE_BASIS_POINT/2)
         pv_minus_half_bp = self.present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
 
-        derivative = (pv_plus_half_bp - pv_minus_half_bp)/0.01  # 0.01 = 0.005 - -0.005
+        derivative = (pv_plus_half_bp - pv_minus_half_bp)/ONE_BASIS_POINT  # 0.01 = 0.005 - -0.005
 
         return derivative
 
@@ -202,9 +215,9 @@ class YieldCurve(Curve):
         Reference: Tuckman and Serrat, 4th ed. equation (4.14).
         """
 
-        derivative_positive_bump = self.calculate_pv_deriv(bond, offset=0.005)
-        derivative_negative_bump = self.calculate_pv_deriv(bond, offset=-0.005)
-        second_derivative = (derivative_positive_bump - derivative_negative_bump) / 0.01
+        derivative_positive_bump = self.calculate_pv_deriv(bond, offset=ONE_BASIS_POINT/2)
+        derivative_negative_bump = self.calculate_pv_deriv(bond, offset=-ONE_BASIS_POINT/2)
+        second_derivative = (derivative_positive_bump - derivative_negative_bump) / ONE_BASIS_POINT
         present_value = self.present_value(bond)
 
         return second_derivative / present_value
@@ -215,12 +228,9 @@ class YieldCurve(Curve):
         """
 
         adjustment.create_adjustment_function()  # creates the default adjustment function with 1 bp movement
-
         pv_with_adjustment = self.present_value(bond, adjustment)
-
         pv_without_adjustment = self.present_value(bond)
-
-        key_rate_dv01 = -(pv_with_adjustment - pv_without_adjustment) / (0.01 * 100)  # 100 to convert into bps
+        key_rate_dv01 = -(pv_with_adjustment - pv_without_adjustment) / (ONE_BASIS_POINT * 100)  # 100 to convert into bps
 
         return key_rate_dv01
 
@@ -248,25 +258,55 @@ class YieldCurve(Curve):
         """
         Plots the yield curve object.
         """
-        interpolation_timestamps = pd.date_range(
+        interpolation_timestamps = list(pd.date_range(
             start=self.reference_date, end=max([instrument.to_knot_value_pair().knot for
                                                 instrument in self.instruments]),
             periods=200
-        )
+        ).date)
 
-        orig_y_vals = [self.interpolate(date_obj) for date_obj in interpolation_timestamps.date]
 
-        plot_series = pd.Series(orig_y_vals, index=interpolation_timestamps.date)
+        knot_points = [self.date_to_interpolation_axis(instrument.to_knot_value_pair().knot)
+                       for instrument in self.instruments]
+        knot_vals = [self(instrument.to_knot_value_pair().knot) * 100
+                     for instrument in self.instruments]
+
+        # inject knot points into interpolation dates
+        for instrument in self.instruments:
+            bisect.insort_right(interpolation_timestamps, instrument.to_knot_value_pair().knot)
+
+        time = [self.date_to_interpolation_axis(date_obj) for date_obj in interpolation_timestamps]
+
+        orig_y_vals = [self(date_obj) * 100 for date_obj in interpolation_timestamps]
+        discount_curve = self.to_discount_curve()
+        discount_vals = [discount_curve(date_obj) for date_obj in interpolation_timestamps]
+
+        fig, ax1 = plt.subplots()
+        fig.set_figheight(5)
+        fig.set_figwidth(10)
+        plt.tick_params(
+            axis='x',  # changes apply to the x-axis
+            which='both',  # both major and minor ticks are affected
+            bottom=False,  # ticks along the bottom edge are off
+            top=False,  # ticks along the top edge are off
+            labelbottom=False)  # labels along the bottom edge are off
+        plt.xlabel('Date - Log Scale')
+        ax1.set_ylim((min(orig_y_vals)-0.5, max(orig_y_vals) + 0.25))
+        plt.xscale("log")
+        plt.ylabel('Yield (%)')
+        plt.plot(time, orig_y_vals, color='forestgreen', label='Yield Curve')
+        plt.plot(knot_points, knot_vals, color='forestgreen', marker='o', linestyle='')
+        plt.xticks(knot_points, labels=[str(instrument.to_knot_value_pair().knot) for instrument in self.instruments])
+        ax2 = ax1.twinx()
+        plt.ylabel('Discount Factor')
+        ax2.set_ylim((0.0, 1.1))
+        plt.plot(time, discount_vals, color='darkgrey', label='Discount Curve')
+
         title_string = f"{self.interpolation_space} Curve Interpolated " \
                        f"Using {self.interpolation_method.value.capitalize()} Method"
 
-        plt.figure(figsize=(10, 6))
-        plot_series.plot(title=title_string, ylabel=self.interpolation_space, color='black', linewidth=2)
-
         if adjustment is not None:
-            bumped_y_vals = [self(date_obj, adjustment) for date_obj in interpolation_timestamps.date]
-            plot_bumped_series = pd.Series(bumped_y_vals, index=interpolation_timestamps.date)
-            plot_bumped_series.plot(linestyle='--', color='black')
+            adjusted_vals = [self(date_obj, adjustment) for date_obj in interpolation_timestamps]
+            plt.plot(time, adjusted_vals, color='forestgreen', linestyle='--', label='Yield Curve')
 
         plt.show()
 
@@ -302,6 +342,8 @@ class YieldCurve(Curve):
                    frameon=False)
         plt.grid(True, alpha=0.5, linewidth=0.5)
         plt.show()
+
+
 
 
 class YieldCurveFactory(object):
@@ -340,8 +382,8 @@ class YieldCurveFactory(object):
                               reference_date: date) -> YieldCurve:
 
         knot_dates = [bond_obj.maturity_date for bond_obj in instruments]
-        values = pd.Series(0, index=knot_dates)
-        market_prices = np.array([bond_obj.full_price for bond_obj in instruments])  # full price here
+        values = [0.0 for date_obj in knot_dates]
+        market_prices = np.array([bond_obj.price for bond_obj in instruments])  # full price here
 
         # initialize the yield curve object
         yield_curve_obj = YieldCurve(
@@ -365,6 +407,7 @@ class YieldCurveFactory(object):
         convergence_solution = scipy.optimize.root(value_to_pv_diffs,
                                                    x0=np.array([0 for _ in values]),
                                                    tol=1e-10)
+
         calibrated_values = convergence_solution['x']
         knot_values = [KnotValuePair(knot=instrument.to_knot_value_pair().knot, value=val)
                        for (instrument, val) in zip(instruments, calibrated_values)]

@@ -153,3 +153,5 @@ class DiscountCurve(Curve):
         when discounting the payment amounts on the discount curve.
         """
         return cashflow.present_value(self)
+
+
