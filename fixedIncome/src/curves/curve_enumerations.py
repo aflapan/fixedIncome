@@ -14,6 +14,14 @@ class InterpolationMethod(Enum):
     QUADRATIC_SPLINE = 'quadratic'
     CUBIC_SPLINE = 'cubic'
 
+class InterpolationSpace(Enum):
+    DISCOUNT_FACTOR = 0
+    FORWARD_RATES = 1
+    YIELD = 2
+    CONTINUOUSLY_COMPOUNDED_YIELD = 3
+    YIELD_TO_MATURITY = 4
+    CONTINUOUSLY_COMPOUNDED_YIELD_TO_MATURITY = 5
+
 class CurveIndex(Enum):
     NONE = -1
     US_TREASURY = 0

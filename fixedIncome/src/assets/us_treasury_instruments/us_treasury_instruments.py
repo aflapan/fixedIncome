@@ -4,7 +4,7 @@ import pandas as pd  # type: ignore
 import math  # type: ignore
 import scipy  # type: ignore
 import bisect
-from typing import Optional
+from typing import Optional, TypeAlias
 
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import (PaymentFrequency,
@@ -19,6 +19,7 @@ from fixedIncome.src.assets.base_cashflow import CashflowCollection, CashflowKey
 
 
 ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value
+
 
 
 class UsTreasuryBond(CashflowCollection):
@@ -102,6 +103,9 @@ class UsTreasuryBond(CashflowCollection):
         """
         Returns the sum of the discounted coupon payments and principal repayment.
         """
+        #TODO: Determine if accrued interest should be included and if it should be discounted.
+        # YES! Check YieldCurve Factory
+
         present_value_coupons = curve.present_value(self[CashflowKeys.COUPON_PAYMENTS])
         present_value_principal = curve.present_value(self[CashflowKeys.SINGLE_PAYMENT])
 
@@ -444,5 +448,8 @@ class UsTreasuryBond(CashflowCollection):
                 return self.principal * self.coupon / (100 * self.num_payments_per_year)
 
 
+class UsTreasuryFuture(CashflowCollection):
+    pass
 
 
+UsTreasuryInstrument: TypeAlias = UsTreasuryBond | UsTreasuryFuture

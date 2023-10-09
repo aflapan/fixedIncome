@@ -12,32 +12,31 @@ import pandas as pd  # type: ignore
 import scipy  # type: ignore
 from datetime import date
 from enum import Enum
-from typing import Callable, Optional, NamedTuple, Sequence, Iterable
+from typing import Callable, Optional, NamedTuple, Iterable
 import functools
 
-from fixedIncome.src.curves.base_curve import Curve, DiscountCurve, KnotValuePair, EndBehavior, InterpolationMethod, CurveIndex
+from fixedIncome.src.curves.base_curve import Curve, DiscountCurve
+from fixedIncome.src.curves.curve_enumerations import (InterpolationSpace,
+                                                       InterpolationMethod,
+                                                       CurveIndex,
+                                                       EndBehavior,
+                                                       KnotValuePair)
+
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryBond, ONE_BASIS_POINT
-from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 from fixedIncome.src.assets.base_cashflow import CashflowCollection
+from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryInstrument, ONE_BASIS_POINT
+
 
 class HedgeRatio(NamedTuple):
     dv01: float
     hedge_ratio: float
     key_rate_date: date
 
-class InterpolationSpace(Enum):
-    DISCOUNT_FACTOR = 0
-    FORWARD_RATES = 1
-    YIELD = 2
-    CONTINUOUSLY_COMPOUNDED_YIELD = 3
-    YIELD_TO_MATURITY = 4
-    CONTINUOUSLY_COMPOUNDED_YIELD_TO_MATURITY = 5
-
 
 class YieldCurve(Curve):
     def __init__(self,
-                 instruments: Iterable[CashflowCollection],
+                 instruments: Iterable[UsTreasuryInstrument],
                  quote_adjustments: Optional[Iterable[KnotValuePair]],
                  interpolation_method: InterpolationMethod,
                  interpolation_day_count_convention: DayCountConvention,
@@ -47,14 +46,14 @@ class YieldCurve(Curve):
                  right_end_behavior: EndBehavior = EndBehavior.ERROR) -> None:
 
         instruments = list(instruments)
-        quote_adjustments = list(quote_adjustments)
-        interpolation_values = [instrument.to_knot_value_pair() for instrument in instruments]
+        quote_adjustments = list(quote_adjustments) if quote_adjustments is not None else []
+        self.interpolation_values = [instrument.to_knot_value_pair() for instrument in instruments]
 
         #TODO: Consider logging the adjustments
-        for kv_pair, quote_adjustment in zip(interpolation_values, quote_adjustments):
+        for kv_pair, quote_adjustment in zip(self.interpolation_values, quote_adjustments):
             kv_pair.value += quote_adjustment
 
-        super().__init__(interpolation_values,
+        super().__init__(self.interpolation_values,
                          interpolation_method,
                          interpolation_day_count_convention,
                          reference_date,
@@ -67,36 +66,38 @@ class YieldCurve(Curve):
 
 
     # present value calculators
-    def present_value(self, instrument: UsTreasuryInstrument,
+    def present_value(self, instrument: CashflowCollection,
                       adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
         """
         Wrapper function for the specific implementations of present value calculations.
         The curve first transforms into the discount curve, and then the instrument specific
         method is called on the instrument provided a discount curve.
         """
+        discount_curve = self.to_discount_curve(adjustment_fxcn)
+        return discount_curve.present_value(instrument)
 
-        match self.interpolation_space:
-            case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
-                pass
-
-            case InterpolationSpace.DISCOUNT_FACTOR:
-                pass
-
-            case _:
-                raise ValueError(f'Interpolation space {self.interpolation_space} does not')
-
-
-
-    @functools.cached_property
     def to_discount_curve(self, adjustment_fxcn: Optional[Callable[[date], float]] = None) -> DiscountCurve:
-        """ Method to transform the """
+        """
+        Method to transform the YieldCurve into a DiscountCurve object depending
+        on the interpolation space used in the Yield Curve.
+        """
 
         match self.interpolation_space:
             case InterpolationSpace.DISCOUNT_FACTOR:
-                return self
+
+                interpolation_values = [KnotValuePair(knot=kv_pair.knot, value=self(kv_pair.knot, adjustment_fxcn))
+                                        for kv_pair in self.interpolation_values]
+
+                return DiscountCurve(interpolation_values=interpolation_values,
+                                     interpolation_method=self.interpolation_method,
+                                     index=CurveIndex.US_TREASURY,
+                                     interpolation_day_count_convention=self.interpolation_day_count_convention,
+                                     reference_date=self.reference_date,
+                                     left_end_behavior=EndBehavior.ERROR,
+                                     right_end_behavior=EndBehavior.ERROR)
 
             case InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD:
-                max_date = self.interpolation_values[-1].date
+                max_date = self.interpolation_values[-1].knot
 
                 date_range = pd.date_range(start=self.reference_date,
                                            end=max_date,
@@ -127,7 +128,7 @@ class YieldCurve(Curve):
     #-------------------------------------------------------------------
 
 
-    def _calc_pv_yield_space(self, bond: Bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
+    def _calc_pv_yield_space(self, bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """
         Returns a float for the present value of a us_treasury_instruments.
         """
@@ -137,7 +138,9 @@ class YieldCurve(Curve):
         time_to_payments = pd.Series(
             [
                 DayCountCalculator.compute_accrual_length(
-                    start_date=self.reference_date, end_date=adjusted_date, dcc=self.interpolation_dcc)
+                    start_date=self.reference_date,
+                    end_date=adjusted_date,
+                    dcc=self.interpolation_day_count_convention)
                 for adjusted_date in bond.payment_schedule.loc[received_payments, 'Adjusted Date']
             ],
             index=bond.payment_schedule.loc[received_payments, 'Adjusted Date']
@@ -165,7 +168,7 @@ class YieldCurve(Curve):
 
     #----------------------------------------------------------------------
     # Duration and convexity with respect to parallel shifts of yield curve
-    def calculate_pv_deriv(self, bond: Bond, offset: float = 0.0) -> float:
+    def calculate_pv_deriv(self, bond, offset: float = 0.0) -> float:
         """
         Calculates the DV01 of the provided us_treasury_instruments under parallel shifts of the yield curve.
         offset allows the user to specify a shift around which the derivative will be computed.
@@ -175,25 +178,25 @@ class YieldCurve(Curve):
             deriv = (PV(offset+half basis point) - PV(offset-half basis Point))/(0.005 - -0.005)
         """
         half_bp_adjustment = self.parallel_bump(bump_amount=offset + 0.005)  # unit is in %, so 0.005 = half a basis point
-        pv_plus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=half_bp_adjustment)
+        pv_plus_half_bp = self.present_value(bond, adjustment_fxcn=half_bp_adjustment)
 
         negative_half_bp_adjustment = self.parallel_bump(bump_amount=offset - 0.005)
-        pv_minus_half_bp = self.calculate_present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
+        pv_minus_half_bp = self.present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
 
         derivative = (pv_plus_half_bp - pv_minus_half_bp)/0.01  # 0.01 = 0.005 - -0.005
 
         return derivative
 
-    def duration(self, bond: Bond) -> float:
+    def duration(self, bond) -> float:
         """
         Calculates the duration of the us_treasury_instruments, as
         -1/P * dP/dy where P is the us_treasury_instruments price.
         """
         derivative = self.calculate_pv_deriv(bond)
-        present_value = self.calculate_present_value(bond)
+        present_value = self.present_value(bond)
         return -derivative/present_value
 
-    def convexity(self, bond: Bond) -> float:
+    def convexity(self, bond) -> float:
         """
         calculate the convexity of a us_treasury_instruments, defined as C := 1/P * d^2 P/d^2y
         Reference: Tuckman and Serrat, 4th ed. equation (4.14).
@@ -202,26 +205,26 @@ class YieldCurve(Curve):
         derivative_positive_bump = self.calculate_pv_deriv(bond, offset=0.005)
         derivative_negative_bump = self.calculate_pv_deriv(bond, offset=-0.005)
         second_derivative = (derivative_positive_bump - derivative_negative_bump) / 0.01
-        present_value = self.calculate_present_value(bond)
+        present_value = self.present_value(bond)
 
         return second_derivative / present_value
 
-    def dv01(self, bond: Bond, adjustment: KeyRate) -> float:
+    def dv01(self, bond, adjustment: KeyRate) -> float:
         """
         Calculates the DV01 with respect to a KeyRate.
         """
 
         adjustment.create_adjustment_function()  # creates the default adjustment function with 1 bp movement
 
-        pv_with_adjustment = self.calculate_present_value(bond, adjustment)
+        pv_with_adjustment = self.present_value(bond, adjustment)
 
-        pv_without_adjustment = self.calculate_present_value(bond)
+        pv_without_adjustment = self.present_value(bond)
 
         key_rate_dv01 = -(pv_with_adjustment - pv_without_adjustment) / (0.01 * 100)  # 100 to convert into bps
 
         return key_rate_dv01
 
-    def calculate_dv01s(self, bond: Bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
+    def calculate_dv01s(self, bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
         """
         Computes the dv01s of the us_treasury_instruments with respect to each KeyRate in the KeyRateCollection.
         Returns a list of HedgeRatios.
@@ -246,27 +249,29 @@ class YieldCurve(Curve):
         Plots the yield curve object.
         """
         interpolation_timestamps = pd.date_range(
-            start = self.reference_date, end=self.interpolation_values.index.max(), periods=200
+            start=self.reference_date, end=max([instrument.to_knot_value_pair().knot for
+                                                instrument in self.instruments]),
+            periods=200
         )
 
         orig_y_vals = [self.interpolate(date_obj) for date_obj in interpolation_timestamps.date]
 
         plot_series = pd.Series(orig_y_vals, index=interpolation_timestamps.date)
         title_string = f"{self.interpolation_space} Curve Interpolated " \
-                       f"Using {self.interpolation_method.capitalize()} Method"
+                       f"Using {self.interpolation_method.value.capitalize()} Method"
 
         plt.figure(figsize=(10, 6))
         plot_series.plot(title=title_string, ylabel=self.interpolation_space, color='black', linewidth=2)
 
         if adjustment is not None:
-            bumped_y_vals = [self.interpolate(date_obj, adjustment) for date_obj in interpolation_timestamps.date]
+            bumped_y_vals = [self(date_obj, adjustment) for date_obj in interpolation_timestamps.date]
             plot_bumped_series = pd.Series(bumped_y_vals, index=interpolation_timestamps.date)
             plot_bumped_series.plot(linestyle='--', color='black')
 
         plt.show()
 
 
-    def plot_price_curve(self, bond: Bond,
+    def plot_price_curve(self, bond: UsTreasuryInstrument,
                          lower_shift: float = -2.0, upper_shift: float = 2.0, shift_increment: float = 0.01) -> None:
         """
         Plots the present value of the us_treasury_instruments along with linear (duration only) and
@@ -275,12 +280,12 @@ class YieldCurve(Curve):
         """
 
         deriv = self.calculate_pv_deriv(bond)
-        bond_pv = self.calculate_present_value(bond)
+        bond_pv = self.present_value(bond)
         bond_convexty = self.convexity(bond)
 
         parallel_shifts = np.arange(start=lower_shift, stop=upper_shift+shift_increment, step=shift_increment)
 
-        pv_vals = [self.calculate_present_value(bond, self.parallel_bump(shift))
+        pv_vals = [self.present_value(bond, self.parallel_bump(shift))
                    for shift in parallel_shifts]
 
         linear_approx = [deriv * shift + bond_pv for shift in parallel_shifts]
@@ -307,7 +312,8 @@ class YieldCurveFactory(object):
     #------------------------------------------------------------------
     # Methods for constructing a curve based on us_treasury_instruments Yields
 
-    def construct_curve_from_yield_to_maturities(self, bond_collection: Sequence[Bond], interpolation_method: str,
+    def construct_curve_from_yield_to_maturities(self, instruments: Iterable[UsTreasuryInstrument],
+                                                 interpolation_method: InterpolationMethod,
                                                  reference_date: date) -> YieldCurve:
         """
         Method to construct a YieldCurve object from the provided list of Bond objects and the
@@ -316,61 +322,53 @@ class YieldCurveFactory(object):
         Returns a YieldCurve object calibrated to interpolate between
         """
 
-        maturity_yield_pairs = sorted([
-            (bond.maturity_date, bond.calculate_yield_to_maturity(reference_date))
-                                       for bond in bond_collection], key=lambda pair: pair[0])
-
-        values = pd.Series([ytm for (maturity, ytm) in maturity_yield_pairs],
-                           index=[maturity for (maturity, ytm) in maturity_yield_pairs])
-
         yield_curve = YieldCurve(
-            interpolation_values=values,
+            instruments=instruments,
+            quote_adjustments=None,
             interpolation_method=interpolation_method,
-            interpolation_space='Yield to Maturity',
-            interpolation_day_count_convention='act/act',
+            interpolation_space=InterpolationSpace.YIELD_TO_MATURITY,
+            interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
             reference_date=reference_date,
-            left_end_behavior='constant',
-            right_end_behavior='constant'
+            left_end_behavior=EndBehavior.CONSTANT,
+            right_end_behavior=EndBehavior.CONSTANT
         )
 
         return yield_curve
 
-    def construct_yield_curve(self, bond_collection: Sequence[Bond], interpolation_method: str,
+    def construct_yield_curve(self, instruments: Iterable[UsTreasuryInstrument],
+                              interpolation_method: InterpolationMethod,
                               reference_date: date) -> YieldCurve:
 
-        knot_dates = [bond_obj.maturity_date for bond_obj in bond_collection]
-
+        knot_dates = [bond_obj.maturity_date for bond_obj in instruments]
         values = pd.Series(0, index=knot_dates)
-
-        market_prices = np.array([bond_obj.full_price for bond_obj in bond_collection])
+        market_prices = np.array([bond_obj.full_price for bond_obj in instruments])  # full price here
 
         # initialize the yield curve object
         yield_curve_obj = YieldCurve(
-            interpolation_values=values,
+            instruments=instruments,
+            quote_adjustments=None,
             interpolation_method=interpolation_method,
-            interpolation_space='Yield',
-            interpolation_day_count_convention='act/act',
+            interpolation_space=InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD,
+            interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
             reference_date=reference_date,
-            left_end_behavior='constant',
-            right_end_behavior='constant'
+            left_end_behavior=EndBehavior.CONSTANT,
+            right_end_behavior=EndBehavior.CONSTANT
         )
 
-        def value_to_pv_diffs(knot_values: np.array) -> np.array:
-
-            new_values = pd.Series(knot_values, index=values.index)
-
-            yield_curve_obj.reset_interpolation_values(new_values)
-
-            pvs = np.array([yield_curve_obj.calculate_present_value(bond_obj) for bond_obj in bond_collection])
-
+        def value_to_pv_diffs(knot_values: np.array[float]) -> np.array:
+            knot_values = [KnotValuePair(knot=instrument.to_knot_value_pair().knot, value=val)
+                           for (instrument, val) in zip(instruments, knot_values)]
+            yield_curve_obj.reset_interpolation_values(knot_values)
+            pvs = np.array([yield_curve_obj.present_value(bond_obj) for bond_obj in instruments])  # markets quote clean
             return pvs - market_prices
 
-        convergence_solution = scipy.optimize.root(value_to_pv_diffs, x0=np.array([0 for _ in values]), tol=1e-10)
-
-        calibrated_values = pd.Series(convergence_solution['x'], index=values.index)
-
-        yield_curve_obj.reset_interpolation_values(calibrated_values)
+        convergence_solution = scipy.optimize.root(value_to_pv_diffs,
+                                                   x0=np.array([0 for _ in values]),
+                                                   tol=1e-10)
+        calibrated_values = convergence_solution['x']
+        knot_values = [KnotValuePair(knot=instrument.to_knot_value_pair().knot, value=val)
+                       for (instrument, val) in zip(instruments, calibrated_values)]
+        yield_curve_obj.reset_interpolation_values(knot_values)
 
         return yield_curve_obj
-
 
