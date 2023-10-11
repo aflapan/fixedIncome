@@ -56,11 +56,8 @@ class Scheduler(object):
         }
 
         self.new_york_business_holidays = self._generate_new_york_business_holidays()
-
         self.settlement_date = self._calculate_settlement_date()
-
         self.dated_date = self._calc_dated_date()
-
         self.payment_schedule = self.create_payment_schedule()
 
     #-----------------------------------------------------------------------
@@ -107,6 +104,7 @@ class Scheduler(object):
         39  2042-12-15  coupon payment    2042-12-15
         40  2043-06-15  coupon payment    2043-06-15
         41  2043-12-15  coupon payment    2043-12-15
+        42  2043-12-15  maturity date     2043-12-15
         """
 
         # first step is to generate the payment days without holiday adjustments
@@ -128,15 +126,15 @@ class Scheduler(object):
                 raise ValueError(f"{self.payment_frequency} is not a valid payment frequency.")
 
         payment_dates = [(self.maturity_date, 'maturity date')]
+
         date = self.maturity_date
-
         if self.payment_frequency != PaymentFrequency.ZERO_COUPON:
-            while date > self.dated_date + increment:
-                date = date - increment
+            # Append coupon payments
+            while date > self.settlement_date:  # work backwards in descending order of date
                 payment_dates.append((date, 'coupon payment'))
+                date = date - increment
 
-        payment_dates.sort(key=lambda date_description_pair: date_description_pair[0]) # sort dates
-
+        payment_dates.reverse()
         self.payment_schedule = pd.DataFrame(payment_dates, columns=['Date', 'Date Type'])
 
         # Second step is to adjust the payment days based on the provided business_day_adjustment

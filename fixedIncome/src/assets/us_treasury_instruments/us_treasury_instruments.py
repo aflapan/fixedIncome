@@ -76,7 +76,11 @@ class UsTreasuryBond(CashflowCollection):
         coupon_cashflow = Cashflow([Payment(payment_date=coupon_date, payment=self.coupon)
                                     for coupon_date in coupon_dates])
 
-        principal_repayment_cashflow = Cashflow([Payment(payment_date=self.maturity_date, payment=self.principal)])
+        principal_repayment_date = [date_obj for (payment_type, date_obj)
+                                    in zip(self.payment_schedule['Date Type'], self.payment_schedule['Adjusted Date'])
+                                    if payment_type == 'maturity date'][0]
+
+        principal_repayment_cashflow = Cashflow([Payment(payment_date=principal_repayment_date, payment=self.principal)])
         cashflows = [coupon_cashflow, principal_repayment_cashflow]
         cashflow_keys = [CashflowKeys.COUPON_PAYMENTS.value, CashflowKeys.SINGLE_PAYMENT.value]  # single payment is principal
         super().__init__(cashflows, cashflow_keys)
@@ -97,7 +101,15 @@ class UsTreasuryBond(CashflowCollection):
         Returns a knot-value pair of the full (dirty) price which includes
         accrued interest and the maturity date.
         """
-        return KnotValuePair(knot=self.maturity_date, value=self.full_price)
+
+
+        if len(self[CashflowKeys.COUPON_PAYMENTS]) > 0:
+            last_exposure = max(self[CashflowKeys.COUPON_PAYMENTS][-1].payment_date,
+                                self[CashflowKeys.SINGLE_PAYMENT][0].payment_date)
+        else:
+            last_exposure = self[CashflowKeys.SINGLE_PAYMENT][0].payment_date
+
+        return KnotValuePair(knot=last_exposure, value=self.full_price)
 
     def present_value(self, curve: DiscountCurve) -> float:
         """
@@ -414,10 +426,8 @@ class UsTreasuryBond(CashflowCollection):
         """
 
         self.payment_schedule['Payment ($)'] = [self.coupon_payment for _ in range(len(self.payment_schedule))]
-
         maturity_index = self.payment_schedule[self.payment_schedule['Date Type'] == 'maturity date'].index
-
-        self.payment_schedule.loc[maturity_index, 'Payment ($)'] = self.principal + self.coupon_payment
+        self.payment_schedule.loc[maturity_index, 'Payment ($)'] = self.principal
 
 
     def get_payment_schedule(self) -> pd.DataFrame:

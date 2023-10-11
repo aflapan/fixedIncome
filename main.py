@@ -7,15 +7,13 @@ from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments impo
                                                                                     UsTreasuryBond)
 from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurve, YieldCurveFactory
 
-
-
 def main(bond_collection, curve_factory) -> None:
 
     #---------------------------------------------------------------------
     # Yield Curve
 
     yield_curve = curve_factory.construct_yield_curve(bond_collection,
-                                                      interpolation_method=InterpolationMethod.LINEAR,
+                                                      interpolation_method=InterpolationMethod.CUBIC_SPLINE,
                                                       reference_date=purchase_date)
     # Trial Key Rate to test bumping Yield Curve
     four_wk_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,

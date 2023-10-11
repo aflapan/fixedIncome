@@ -3,6 +3,7 @@ A base class to represent a cashflow consisting of payment dates and payment amo
 """
 from __future__ import annotations
 from datetime import date
+import operator
 from typing import NamedTuple, Optional
 import pandas as pd
 from collections.abc import Iterable, Set
@@ -33,8 +34,15 @@ class Cashflow(Iterable):
     def __len__(self):
         return len(self.schedule)
 
-    def __getitem__(self, item: int) -> Payment:
-        return self.schedule[item]
+    def __getitem__(self, key: int) -> Payment | Cashflow:
+        """  Retrieves a Cahsflow or Payment object from the collection via indexing. """
+        if isinstance(key, slice):
+            cls = type(self)
+            return cls(self.schedule[key])
+
+        index = operator.index(key)
+        return self.schedule[index]
+
 
     def get_payment_amounts(self) -> list[Optional[float]]:
         """ Returns a list of the payment amounts """
