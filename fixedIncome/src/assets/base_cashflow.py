@@ -112,12 +112,15 @@ class CashflowCollection(Set):
         """ Iterates through the cashflows in the collection. """
         return self.cashflows.items()
 
-    def __getitem__(self, item) -> Cashflow:
+    def __getitem__(self, item: CashflowKeys | str) -> Cashflow:
         """
         Allows one to index by the Cashflow key
         and obtain the corresponding individual cash flow.
         """
-        return self.cashflows[item]
+        try:
+            return self.cashflows[item]
+        except KeyError:
+            return self.cashflows[item.value]
 
     @abstractmethod
     def to_knot_value_pair(self) -> KnotValuePair:
@@ -143,7 +146,7 @@ class ZeroCoupon(CashflowCollection):
         self._price = price
         single_payment_iterable = [Payment(self._payment_date, 1.0)]
         cashflows = [Cashflow(single_payment_iterable)]  # a singleton cashflow of $1
-        cashflow_keys = [CashflowKeys.SINGLE_PAYMENT]
+        cashflow_keys = [CashflowKeys.SINGLE_PAYMENT.value]
         super().__init__(cashflows, cashflow_keys)
 
     @property

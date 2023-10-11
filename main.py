@@ -64,6 +64,9 @@ def main(bond_collection, curve_factory) -> None:
     #kr_collection._set_dates_in_collection()
 
     yield_curve.plot(adjustment=two_yr_kr)
+    yield_curve.present_value(two_yr)  # schedule isn't exactly correct
+
+
     #yield_curve.plot_price_curve(thirty_yr)
 
     # DV01 and convexity calculations
@@ -129,7 +132,7 @@ if __name__ == '__main__':
                   maturity_date=date(2024, 2, 22))
 
     # Two Year
-    two_yr = UsTreasuryBond(price=99.85,  # need to
+    two_yr = UsTreasuryBond(price=99 + 9/32,
                   coupon=5.00,
                   principal=100,
                   tenor='2Y',
@@ -137,48 +140,48 @@ if __name__ == '__main__':
                   maturity_date=date(2025, 2, 28))
 
     # Three Year
-    three_yr = UsTreasuryBond(price=99.0,
-                    coupon=4.0000,
+    three_yr = UsTreasuryBond(price=99 + 3/32,
+                    coupon=4.625,
                     principal=100,
                     tenor='3Y',
                     purchase_date=purchase_date,
                     maturity_date=date(2026, 2, 15))
 
     # Five Year
-    five_yr = UsTreasuryBond(price=99.42,
-                   coupon=4.63,
+    five_yr = UsTreasuryBond(price=99 + 4/32,
+                   coupon=4.625,
                    principal=100,
                    tenor='5Y',
                    purchase_date=purchase_date,
                    maturity_date=date(2028, 2, 28))
 
     # Seven Year
-    seven_yr = UsTreasuryBond(price=90.0,
-                    coupon=4.000,
+    seven_yr = UsTreasuryBond(price=98 + 9/32,
+                    coupon=4.625,
                     principal=100,
                     tenor='7Y',
                     purchase_date=purchase_date,
                     maturity_date=date(2030, 2, 28))
 
     # Ten Year
-    ten_yr = UsTreasuryBond(price=92.80,
-                  coupon=3.88,
+    ten_yr = UsTreasuryBond(price=92 + 8/32,
+                  coupon=3.875,
                   principal=100,
                   tenor='10Y',
                   purchase_date=purchase_date,
                   maturity_date=date(2033, 2, 15))
 
     # Twenty Year
-    twenty_yr = UsTreasuryBond(price=90.0,
-                     coupon=5.13,
+    twenty_yr = UsTreasuryBond(price=90.052,
+                     coupon=4.375,
                      principal=100,
                      tenor='20Y',
                      purchase_date=purchase_date,
                      maturity_date=date(2043, 2, 15))
 
     # Thirty Year
-    thirty_yr = UsTreasuryBond(price=86.95,
-                     coupon=4.13,
+    thirty_yr = UsTreasuryBond(price=86 + 9/32,
+                     coupon=4.125,
                      principal=100,
                      tenor='30Y',
                      purchase_date=purchase_date,

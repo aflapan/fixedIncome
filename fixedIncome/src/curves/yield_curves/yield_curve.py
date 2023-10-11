@@ -14,7 +14,7 @@ import scipy  # type: ignore
 from datetime import date
 from enum import Enum
 from typing import Callable, Optional, NamedTuple, Iterable
-import functools
+
 
 from fixedIncome.src.curves.base_curve import Curve, DiscountCurve
 from fixedIncome.src.curves.curve_enumerations import (InterpolationSpace,
@@ -304,9 +304,9 @@ class YieldCurve(Curve):
         title_string = f"{self.interpolation_space} Curve Interpolated " \
                        f"Using {self.interpolation_method.value.capitalize()} Method"
 
-        if adjustment is not None:
-            adjusted_vals = [self(date_obj, adjustment) for date_obj in interpolation_timestamps]
-            plt.plot(time, adjusted_vals, color='forestgreen', linestyle='--', label='Yield Curve')
+        #if adjustment is not None:
+        #    adjusted_vals = [self(date_obj, adjustment) for date_obj in interpolation_timestamps]
+        #    plt.plot(time, adjusted_vals, color='forestgreen', linestyle='--', label='Yield Curve')
 
         plt.show()
 

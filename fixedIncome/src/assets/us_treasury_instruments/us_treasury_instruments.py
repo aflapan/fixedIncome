@@ -71,14 +71,14 @@ class UsTreasuryBond(CashflowCollection):
 
         coupon_dates = [date_obj for (payment_type, date_obj) in
                         zip(self.payment_schedule['Date Type'], self.payment_schedule['Adjusted Date'])
-                        if payment_type == 'coupon']
+                        if payment_type == 'coupon payment']
 
         coupon_cashflow = Cashflow([Payment(payment_date=coupon_date, payment=self.coupon)
                                     for coupon_date in coupon_dates])
 
         principal_repayment_cashflow = Cashflow([Payment(payment_date=self.maturity_date, payment=self.principal)])
         cashflows = [coupon_cashflow, principal_repayment_cashflow]
-        cashflow_keys = [CashflowKeys.COUPON_PAYMENTS, CashflowKeys.SINGLE_PAYMENT]  # single payment is principal
+        cashflow_keys = [CashflowKeys.COUPON_PAYMENTS.value, CashflowKeys.SINGLE_PAYMENT.value]  # single payment is principal
         super().__init__(cashflows, cashflow_keys)
 
     def __repr__(self) -> str:
@@ -106,8 +106,8 @@ class UsTreasuryBond(CashflowCollection):
         #TODO: Determine if accrued interest should be included and if it should be discounted.
         # YES! Check YieldCurve Factory
 
-        present_value_coupons = curve.present_value(self[CashflowKeys.COUPON_PAYMENTS])
-        present_value_principal = curve.present_value(self[CashflowKeys.SINGLE_PAYMENT])
+        present_value_coupons = curve.present_value(self[CashflowKeys.COUPON_PAYMENTS.value])
+        present_value_principal = curve.present_value(self[CashflowKeys.SINGLE_PAYMENT.value])
 
         return present_value_coupons + present_value_principal
 

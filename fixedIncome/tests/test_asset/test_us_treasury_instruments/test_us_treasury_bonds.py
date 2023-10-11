@@ -6,6 +6,7 @@ fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments
 
 from datetime import date
 from fixedIncome.src.scheduling_tools.schedule_enumerations import PaymentFrequency
+from fixedIncome.src.assets.base_cashflow import CashflowKeys
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryBond
 
 #-----------------------------------------------------------------
@@ -96,7 +97,7 @@ long_term_bond_collection = [two_yr, three_yr, five_yr, seven_yr, ten_yr, twenty
 #------------------------------------------------------------------------
 # Unit Tests
 
-def test_accrued_interest_example():
+def test_accrued_interest_example() -> None:
     """
     This test computes the accrued interest on an example Treasury Bond and compares the result to the known answer.
     The example is taken from Tuckman and Serrat, *Fixed Income Securities, 4th ed.*, pages 60-61.
@@ -117,7 +118,7 @@ def test_accrued_interest_example():
     assert abs(test_bond.accrued_interest - book_answer) < PASS_THRESH
 
 
-def test_accrued_interest_nonnegative():
+def test_accrued_interest_is_nonnegative() -> None:
     """
     Checks that all accrued interest values are non-negative.
     """
@@ -127,7 +128,7 @@ def test_accrued_interest_nonnegative():
     assert all([accrued_interest >= 0.0 for accrued_interest in accrued_interests])
 
 
-def test_yield_to_maturity_present_value():
+def test_yield_to_maturity_present_value() -> None:
     """
     Tests if the present values of us_treasury_instruments cashflows equal the full market price when
      semi-annualy discounted at their yield to maturity rates.
@@ -146,4 +147,17 @@ def test_yield_to_maturity_present_value():
     full_prices = [bond.get_full_price() for bond in long_term_bond_collection]
 
     assert all([abs(pv - fp) < PASS_THRESH for (pv, fp) in zip(present_values, full_prices)])
+
+
+def test_that_cashflow_coupon_payments_align_with_schedule() -> None:
+    """
+    Tests that the number of coupon payments in each bond's COUPON_PAYMENTS cashflows
+    is equal to the expected number (two coupons per year for the duration of the bond.)
+    """
+    num_coupon_payments = (4, 6, 10, 14, 20, 40, 60)
+
+    assert all(len(bond[CashflowKeys.COUPON_PAYMENTS]) == num_coupons
+               for bond, num_coupons in zip(long_term_bond_collection, num_coupon_payments))
+
+
 
