@@ -175,7 +175,7 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
                                maturity_date=date(2025, 2, 28))
 
     three_yr_price = 100 * math.exp(-FIXED_YIELD * DayCountCalculator.compute_accrual_length(purchase_date,
-                                                                                             date(2026, 2, 28),
+                                                                                             date(2026, 3, 2),
                                                                                              DayCountConvention.ACTUAL_OVER_ACTUAL))
     three_yr_zc = UsTreasuryBond(price=three_yr_price,
                                  coupon=0.00,
@@ -186,7 +186,7 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
                                  maturity_date=date(2026, 2, 28))
 
     four_yr_price = 100 * math.exp(-FIXED_YIELD * DayCountCalculator.compute_accrual_length(purchase_date,
-                                                                                            date(2027, 2, 28),
+                                                                                            date(2027, 3, 1),
                                                                                             DayCountConvention.ACTUAL_OVER_ACTUAL))
     four_yr_zc = UsTreasuryBond(price=four_yr_price,
                                 coupon=0.00,

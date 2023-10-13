@@ -1,10 +1,12 @@
 from datetime import date
+import math
 
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention, PaymentFrequency
 from fixedIncome.src.curves.curve_enumerations import InterpolationMethod
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import (ONE_BASIS_POINT,
                                                                                     UsTreasuryBond)
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurve, YieldCurveFactory
 
 def main(bond_collection, curve_factory) -> None:
@@ -13,7 +15,7 @@ def main(bond_collection, curve_factory) -> None:
     # Yield Curve
 
     yield_curve = curve_factory.construct_yield_curve(bond_collection,
-                                                      interpolation_method=InterpolationMethod.CUBIC_SPLINE,
+                                                      interpolation_method=InterpolationMethod.QUADRATIC_SPLINE,
                                                       reference_date=purchase_date)
     # Trial Key Rate to test bumping Yield Curve
     four_wk_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
@@ -84,7 +86,6 @@ def main(bond_collection, curve_factory) -> None:
     #print("Key rate DV01s...")
     #print(dv01s)
     #print(format(kr_collection))
-
 
 
 

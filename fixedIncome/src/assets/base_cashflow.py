@@ -72,7 +72,8 @@ class Cashflow(Iterable):
         payment amounts using the provided discount curve.
         """
         return sum(discount_curve(payment.payment_date) * payment.payment
-                   for payment in self if payment.payment is not None)
+                   for payment in self if payment.payment is not None
+                   and payment.payment_date >= discount_curve.reference_date)
 
     @classmethod
     def create_from_date_and_float_iterables(cls,

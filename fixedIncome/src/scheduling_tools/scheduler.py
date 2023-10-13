@@ -130,7 +130,7 @@ class Scheduler(object):
         date = self.maturity_date
         if self.payment_frequency != PaymentFrequency.ZERO_COUPON:
             # Append coupon payments
-            while date > self.settlement_date:  # work backwards in descending order of date
+            while date > self.dated_date:  # work backwards in descending order of date
                 payment_dates.append((date, 'coupon payment'))
                 date = date - increment
 
