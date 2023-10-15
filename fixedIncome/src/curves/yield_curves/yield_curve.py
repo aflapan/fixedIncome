@@ -14,6 +14,7 @@ import scipy  # type: ignore
 from datetime import date
 from enum import Enum
 from typing import Callable, Optional, NamedTuple, Iterable
+from functools import partial
 
 
 from fixedIncome.src.curves.base_curve import Curve, DiscountCurve
@@ -48,7 +49,7 @@ class YieldCurve(Curve):
 
         instruments = list(instruments)
         quote_adjustments = list(quote_adjustments) if quote_adjustments is not None else []
-        self.interpolation_values = [instrument.to_knot_value_pair() for instrument in instruments]
+        self._interpolation_values = [instrument.to_knot_value_pair() for instrument in instruments]
 
         #TODO: Consider logging the adjustments
         for kv_pair, quote_adjustment in zip(self.interpolation_values, quote_adjustments):
@@ -136,41 +137,6 @@ class YieldCurve(Curve):
                                       'are implemented in to_discount_curve.')
 
 
-
-
-
-    #-------------------------------------------------------------------
-
-
-    def _calc_pv_yield_space(self, bond, adjustment: Optional[Callable[[date], float]] = None) -> float:
-        """
-        Returns a float for the present value of a us_treasury_instruments.
-        """
-
-        received_payments = bond._is_payment_received(self.reference_date)
-
-        time_to_payments = pd.Series(
-            [
-                DayCountCalculator.compute_accrual_length(
-                    start_date=self.reference_date,
-                    end_date=adjusted_date,
-                    dcc=self.interpolation_day_count_convention)
-                for adjusted_date in bond.payment_schedule.loc[received_payments, 'Adjusted Date']
-            ],
-            index=bond.payment_schedule.loc[received_payments, 'Adjusted Date']
-        )
-
-        payment_amounts = bond.payment_schedule.loc[received_payments, ['Adjusted Date', 'Payment ($)']].set_index('Adjusted Date')
-        payment_dates = bond.payment_schedule.loc[received_payments, 'Adjusted Date']
-
-        yields = np.array([self.interpolate(pymnt_date, adjustment) for pymnt_date in payment_dates])
-
-        # Divide yields by 100 to convert from % to absolute
-        pv = np.exp(-(yields/100) * time_to_payments).dot(payment_amounts)  # sum_{i=1}^n Payment_i e^{-y_i * t_i}
-
-        return pv.item()
-
-
     #--------------------------------------------------------------
     # functionality for bumping curves
 
@@ -187,7 +153,6 @@ class YieldCurve(Curve):
         Calculates the DV01 of the provided us_treasury_instruments under parallel shifts of the yield curve.
         offset allows the user to specify a shift around which the derivative will be computed.
 
-
         Formula is
             deriv = (PV(offset+half basis point) - PV(offset-half basis Point))/(0.005 - -0.005)
         """
@@ -200,13 +165,13 @@ class YieldCurve(Curve):
 
         return derivative
 
-    def duration(self, bond) -> float:
+    def duration(self, instrument: UsTreasuryInstrument) -> float:
         """
         Calculates the duration of the us_treasury_instruments, as
         -1/P * dP/dy where P is the us_treasury_instruments price.
         """
-        derivative = self.calculate_pv_deriv(bond)
-        present_value = self.present_value(bond)
+        derivative = self.calculate_pv_deriv(instrument)
+        present_value = self.present_value(instrument)
         return -derivative/present_value
 
     def convexity(self, bond) -> float:
@@ -264,7 +229,6 @@ class YieldCurve(Curve):
             periods=200
         ).date)
 
-
         knot_points = [self.date_to_interpolation_axis(instrument.to_knot_value_pair().knot)
                        for instrument in self.instruments]
         knot_vals = [self(instrument.to_knot_value_pair().knot) * 100
@@ -275,7 +239,6 @@ class YieldCurve(Curve):
             bisect.insort_right(interpolation_timestamps, instrument.to_knot_value_pair().knot)
 
         time = [self.date_to_interpolation_axis(date_obj) for date_obj in interpolation_timestamps]
-
         orig_y_vals = [self(date_obj) * 100 for date_obj in interpolation_timestamps]
         discount_curve = self.to_discount_curve()
         discount_vals = [discount_curve(date_obj) for date_obj in interpolation_timestamps]
@@ -296,23 +259,33 @@ class YieldCurve(Curve):
         plt.plot(time, orig_y_vals, color='forestgreen', label='Yield Curve')
         plt.plot(knot_points, knot_vals, color='forestgreen', marker='o', linestyle='')
         plt.xticks(knot_points, labels=[str(instrument.to_knot_value_pair().knot) for instrument in self.instruments])
+
+        if adjustment is not None:
+            adjusted_vals = [self(date_obj, adjustment) * 100 for date_obj in interpolation_timestamps]
+            plt.plot(time, adjusted_vals, linestyle='dashed', color='forestgreen', label='Adjusted Yield Curve')
+            discount_curve = self.to_discount_curve(adjustment_fxcn=adjustment)
+            adjusted_discount_vals = [discount_curve(date_obj) for date_obj in interpolation_timestamps]
+
+
         ax2 = ax1.twinx()
         plt.ylabel('Discount Factor')
         ax2.set_ylim((0.0, 1.1))
         plt.plot(time, discount_vals, color='darkgrey', label='Discount Curve')
+        if adjustment is not None:
+            plt.plot(time, adjusted_discount_vals, linestyle='dashed', color='darkgrey', label='Adjusted Duscount Curve')
 
         title_string = f"{self.interpolation_space} Curve Interpolated " \
                        f"Using {self.interpolation_method.value.capitalize()} Method"
 
-        #if adjustment is not None:
-        #    adjusted_vals = [self(date_obj, adjustment) for date_obj in interpolation_timestamps]
-        #    plt.plot(time, adjusted_vals, color='forestgreen', linestyle='--', label='Yield Curve')
-
         plt.show()
 
 
-    def plot_price_curve(self, bond: UsTreasuryInstrument,
-                         lower_shift: float = -2.0, upper_shift: float = 2.0, shift_increment: float = 0.01) -> None:
+    def plot_price_curve(self,
+                         bond: UsTreasuryInstrument,
+                         lower_shift: float = -200 * ONE_BASIS_POINT,
+                         upper_shift: float = 200 * ONE_BASIS_POINT,
+                         shift_increment: float = ONE_BASIS_POINT
+                         ) -> None:
         """
         Plots the present value of the us_treasury_instruments along with linear (duration only) and
         quadratic (duration+convexity) approximations of the us_treasury_instruments price as the yield curve
@@ -325,16 +298,14 @@ class YieldCurve(Curve):
 
         parallel_shifts = np.arange(start=lower_shift, stop=upper_shift+shift_increment, step=shift_increment)
 
-        pv_vals = [self.present_value(bond, self.parallel_bump(shift))
-                   for shift in parallel_shifts]
-
+        pv_vals = [self.present_value(bond, self.parallel_bump(shift)) for shift in parallel_shifts]
         linear_approx = [deriv * shift + bond_pv for shift in parallel_shifts]
         quad_approx = [bond_pv + deriv * shift + shift**2 * bond_pv*bond_convexty/2 for shift in parallel_shifts]
 
         plt.figure(figsize=(10, 6))
-        plt.plot(parallel_shifts*100, pv_vals, color="black", linewidth=2)
-        plt.plot(parallel_shifts*100, quad_approx, color="black", linestyle="-.", linewidth=1.5)
-        plt.plot(parallel_shifts*100, linear_approx, color="black", linestyle=':', linewidth=1)
+        plt.plot(parallel_shifts*10_000, pv_vals, color="black", linewidth=2)
+        plt.plot(parallel_shifts*10_000, quad_approx, color="black", linestyle="-.", linewidth=1.5)
+        plt.plot(parallel_shifts*10_000, linear_approx, color="black", linestyle=':', linewidth=1)
         plt.xlabel("Shift in Basis Points (bp)")
         plt.ylabel(f"Present Value in USD ($)")
         plt.title(f'Present Value of {bond.tenor} Bond Across Parallel Shifts in the Yield Curve')
@@ -383,7 +354,7 @@ class YieldCurveFactory(object):
 
         knot_dates = [bond_obj.maturity_date for bond_obj in instruments]
         values = [0.0 for date_obj in knot_dates]
-        market_prices = np.array([bond_obj.price for bond_obj in instruments])  # full price here
+        market_prices = np.array([bond_obj.price for bond_obj in instruments])
 
         # initialize the yield curve object
         yield_curve_obj = YieldCurve(
@@ -412,6 +383,55 @@ class YieldCurveFactory(object):
         knot_values = [KnotValuePair(knot=instrument.to_knot_value_pair().knot, value=val)
                        for (instrument, val) in zip(instruments, calibrated_values)]
         yield_curve_obj.reset_interpolation_values(knot_values)
+
+        return yield_curve_obj
+
+    def bootstrap_yield_curve(self, instruments: Iterable[UsTreasuryInstrument],
+                              interpolation_method: InterpolationMethod,
+                              reference_date: date) -> YieldCurve:
+
+        """
+        Constructs a yield curve by bootstrapping the PV values to match their market prices.
+        """
+        instruments = list(instruments)
+
+        market_prices = [bond_obj.price for bond_obj in instruments]
+
+        # initialize the yield curve object
+        yield_curve_obj = YieldCurve(
+            instruments=instruments,
+            quote_adjustments=None,
+            interpolation_method=interpolation_method,
+            interpolation_space=InterpolationSpace.CONTINUOUSLY_COMPOUNDED_YIELD,
+            interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
+            reference_date=reference_date,
+            left_end_behavior=EndBehavior.CONSTANT,
+            right_end_behavior=EndBehavior.CONSTANT
+        )
+
+        def value_to_pv_diff(knot_value: float, index: int,  target: float, instrument : UsTreasuryInstrument) -> float:
+            """
+            Helper function which computes the difference between the
+            PV of an instrument computed on the yield curve and the target value.
+            """
+            knot_date = yield_curve_obj.interpolation_values[index].knot
+            new_knot_value = KnotValuePair(knot=knot_date, value=float(knot_value))
+            yield_curve_obj.reset_interpolation_value(new_value=new_knot_value, index=index)
+
+            return yield_curve_obj.present_value(instrument) - target
+
+
+        for index, instrument in enumerate(instruments):
+            frzn_pv_diff = partial(value_to_pv_diff, index=index, target=market_prices[index], instrument=instrument)
+            convergence_solution = scipy.optimize.root(frzn_pv_diff,
+                                                       x0=np.array([0.0]),
+                                                       tol=1e-10)
+
+            solution_knot = KnotValuePair(knot=instrument.to_knot_value_pair().knot,
+                                          value=float(convergence_solution['x']))
+
+            if index == 4:
+                yield_curve_obj.present_value(instrument)
 
         return yield_curve_obj
 

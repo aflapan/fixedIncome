@@ -30,7 +30,7 @@ class Curve(Callable):
                  left_end_behavior: EndBehavior = EndBehavior.ERROR,
                  right_end_behavior: EndBehavior = EndBehavior.ERROR) -> None:
 
-        self.interpolation_values = sorted(list(interpolation_values), key=lambda interp_val: interp_val.knot)
+        self._interpolation_values = sorted(list(interpolation_values), key=lambda interp_val: interp_val.knot)
         self.interpolation_method = interpolation_method
         self.interpolation_day_count_convention = interpolation_day_count_convention
         self.reference_date = reference_date if reference_date is not None else self.interpolation_values[0].knot
@@ -40,11 +40,13 @@ class Curve(Callable):
         self.interpolator: Callable[[date], float]
         self._create_interpolation_object()
 
+    @property
+    def interpolation_values(self) -> list[KnotValuePair]:
+        return self._interpolation_values
 
     def __call__(self, date_obj: date, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """ Shortcut to calling the interpolate method which allows the user to call the object directly. """
         return self.interpolate(date_obj, adjustment)
-
 
     def date_to_interpolation_axis(self, date_obj: date) -> float:
         """
@@ -116,8 +118,15 @@ class Curve(Callable):
         """
         Resets the interpolator based on new KnotValuePairs.
         """
-        self.interpolation_values = sorted(list(new_values), key=lambda interp_val: interp_val.knot)
+        self._interpolation_values = sorted(list(new_values), key=lambda interp_val: interp_val.knot)
         self._create_interpolation_object()
+
+    def reset_interpolation_value(self, new_value: KnotValuePair, index: int) -> None:
+        """ Resets the interpolation based on a new KnotValuePair located at the provided index. """
+        #TODO: Create checks for knot_dates
+        self._interpolation_values[index] = new_value
+        self._create_interpolation_object()
+
 
 
 class DiscountCurve(Curve):

@@ -9,14 +9,14 @@ from typing import Optional, Callable, Union, Iterable
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
 
-
+ONE_BASIS_POINT = 0.0001
 class KeyRate(Callable):
     """
     Instantiates a KeyRate object.
     """
-    __bump_val: float = 0.01  # Rate amount in percent (%) used to create adjustment
-                              # functions for key rate bump functions.
-                              # Default value is 1 bp, or 0.01%.
+    __bump_val: float = ONE_BASIS_POINT   # Rate amount in used to create adjustment
+                                          # functions for key rate bump functions.
+                                          # Default value is 1 bp, or 0.01%.
 
     __adjustment_fxcn: Callable[[date], float] = None
 
@@ -506,6 +506,12 @@ class KeyRateCollection(MutableSequence[KeyRate], Callable):
             return sum(key_rate(date_val) for key_rate in self)
 
         self.__adjustment_fxcn = combined_adjustment_fxcn
+
+    def set_bump_val(self, new_bump_val: Optional[float] = None) -> None:
+        """ A method to set the KeyRate bump levels in the collection to the new provided value. """
+        for key_rate in self:
+            key_rate.set_bump_val(new_bump_val)
+        self._create_combined_adjustment_function()
 
 
 

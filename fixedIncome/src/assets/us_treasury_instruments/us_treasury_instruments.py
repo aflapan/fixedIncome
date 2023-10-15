@@ -18,8 +18,8 @@ from fixedIncome.src.curves.base_curve import DiscountCurve
 from fixedIncome.src.assets.base_cashflow import CashflowCollection, CashflowKeys, Cashflow, Payment
 
 
-ONE_BASIS_POINT = 0.01  # a basis point in percent (%) value
-
+ONE_BASIS_POINT = 0.0001
+ONE_PERCENT = 0.01
 
 
 class UsTreasuryBond(CashflowCollection):
@@ -67,7 +67,6 @@ class UsTreasuryBond(CashflowCollection):
         self.dated_date = self.scheduler_obj.dated_date
         self.accrued_interest = self.calculate_accrued_interest()
         self.full_price = self.get_full_price()
-
 
         coupon_dates = [date_obj for (payment_type, date_obj) in
                         zip(self.payment_schedule['Date Type'], self.payment_schedule['Adjusted Date'])
@@ -455,7 +454,7 @@ class UsTreasuryBond(CashflowCollection):
                 return 0
 
             case _:
-                return self.principal * self.coupon / (100 * self.num_payments_per_year)
+                return self.principal * self.coupon / (100 * self.num_payments_per_year)  # coupon is assumed to be in %
 
 
 class UsTreasuryFuture(CashflowCollection):

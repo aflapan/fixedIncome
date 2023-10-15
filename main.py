@@ -14,9 +14,10 @@ def main(bond_collection, curve_factory) -> None:
     #---------------------------------------------------------------------
     # Yield Curve
 
-    yield_curve = curve_factory.construct_yield_curve(bond_collection,
-                                                      interpolation_method=InterpolationMethod.QUADRATIC_SPLINE,
+    yield_curve = curve_factory.bootstrap_yield_curve(bond_collection,
+                                                      interpolation_method=InterpolationMethod.LINEAR,
                                                       reference_date=purchase_date)
+
     # Trial Key Rate to test bumping Yield Curve
     four_wk_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
                          key_rate_date=date(2023, 3, 28),
@@ -60,24 +61,26 @@ def main(bond_collection, curve_factory) -> None:
 
     key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,
                      thirty_yr_kr]
+
     #kr_collection = KeyRateCollection(key_rate_list)
-    #kr_collection._set_dates_in_collection()
+
+    two_yr_kr.set_bump_val(0.01)
 
     yield_curve.plot(adjustment=two_yr_kr)
-    yield_curve.present_value(two_yr)  # schedule isn't exactly correct
 
-
-    #yield_curve.plot_price_curve(thirty_yr)
 
     # DV01 and convexity calculations
 
-    #durations = [yield_curve.duration(bond) for bond in bond_collection]
-    #print("Duration values are...")
-    #print(durations)
+    durations = [yield_curve.duration(bond) for bond in bond_collection]
+    print("Duration values are...")
+    print(durations)
 
-    #convexities = [yield_curve.convexity(bond) for bond in bond_collection]
-    #print("Convexity values are...")
-    #print(convexities)
+    convexities = [yield_curve.convexity(bond) for bond in bond_collection]
+    print("Convexity values are...")
+    print(convexities)
+
+    yield_curve.plot_price_curve(thirty_yr)
+
 
     #----------------------------------------------------------------
     # Key Rate DV01s

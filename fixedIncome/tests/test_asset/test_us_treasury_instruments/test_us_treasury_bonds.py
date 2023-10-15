@@ -160,4 +160,10 @@ def test_that_cashflow_coupon_payments_align_with_schedule() -> None:
                for bond, num_coupons in zip(long_term_bond_collection, num_coupon_payments))
 
 
-
+def test_principal_repayment_date_equals_last_coupon_date() -> None:
+    """
+    Tests that the principal is repaid on the last coupon payment for a
+    coupon-paying bond.
+    """
+    assert all(bond[CashflowKeys.COUPON_PAYMENTS][-1].payment_date == bond[CashflowKeys.SINGLE_PAYMENT][0].payment_date
+               for bond in long_term_bond_collection)
