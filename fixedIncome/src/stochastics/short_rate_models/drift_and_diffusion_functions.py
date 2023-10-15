@@ -2,14 +2,6 @@
 This module contains a collection of useful drift and diffusion functions
 """
 
-from typing import NamedTuple, Callable
-
-class DriftDiffusionPair(NamedTuple):
-    drift: Callable[[float, float], float]
-    diffusion: Callable[[float, float], float]
-
-#------------------------------------------------------------------
-# Brownian Motions
 
 def brownian_motion_with_drift():
     pass
