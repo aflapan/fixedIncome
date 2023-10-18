@@ -21,8 +21,8 @@ class BrownianMotion(Callable):
         self._start_date_time = start_date_time
         self._end_date_time = end_date_time
         self._dimension = dimension
-        assert dimension, dimension == correlation_matrix.shape
         self.correlation_matrix = correlation_matrix if correlation_matrix is not None else np.eye(self._dimension)
+        assert dimension, dimension == self.correlation_matrix.shape
         self.lower_triangular_mat = np.linalg.cholesky(self.correlation_matrix)
         self._path = None
 
@@ -55,8 +55,23 @@ class BrownianMotion(Callable):
         time_diff = self.end_date_time - self.start_date_time
         time_spread = time_diff.total_seconds()
         time_since_start = (datetime_obj - self.start_date_time)
-        interpolated_index = math.floor((num_steps-1) * time_since_start.total_seconds() / time_spread)
-        return self.path[:, interpolated_index]
+
+        interpolation_float = (num_steps-1) * time_since_start.total_seconds() / time_spread
+        interpolated_lower_index = math.floor(interpolation_float)
+        interpolated_upper_index = math.ceil(interpolation_float)
+
+        if interpolated_lower_index == interpolated_upper_index:
+            return self.path[:, interpolated_lower_index]
+
+        prev_value = self.path[:, interpolated_lower_index]
+        next_value = self.path[:, interpolated_upper_index]
+
+        time_since_prev_index = interpolation_float - interpolated_lower_index
+        time_to_next_index = interpolated_upper_index - interpolation_float
+        total_time = time_since_prev_index + time_to_next_index
+
+        return (time_since_prev_index * next_value + prev_value * time_to_next_index) / total_time
+
 
     def _generate_increments(self, dt: float, num_steps: int, seed: Optional[int] = None) -> np.ndarray:
         """
@@ -90,10 +105,12 @@ class BrownianMotion(Callable):
         return brownian_paths
 
     def plot(self):
+        plural = 's' if self.dimension > 1 else ''
+        title_str = f'Brownian Motion Sample Path{plural}'
         plt.figure(figsize=(10, 6))
-        plt.title(f'Brownian Motion Path')
+        plt.title(title_str)
         date_range = pd.date_range(start=self.start_date_time, end=self.end_date_time, periods=self.path.shape[1])
-        plt.plot(date_range, self.path.T, color='darkblue', linewidth=0.5, alpha=1)
+        plt.plot(date_range, self.path.T, linewidth=0.5, alpha=1)
         plt.grid(alpha=0.25)
         plt.show()
 
@@ -101,18 +118,18 @@ class BrownianMotion(Callable):
 #------------------------------------------------------------------------------
 
 def main():
-    rho = 0.0
-    correlation_matrix = np.array([[1.0, rho], [rho, 1.0]])
+    rho = 0.75
+    correlation_matrix = np.array([[1.0, rho, rho], [rho, 1.0, rho], [rho, rho, 1.0]])
 
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2023, 10, 15, 23, 59, 59, 999_999)
+    end_time = datetime(2023, 10, 16, 0, 0, 0, 0)
 
     bm = BrownianMotion(start_date_time=start_time,
                         end_date_time=end_time,
-                        dimension=1,
-                        correlation_matrix=None)
+                        dimension=3,
+                        correlation_matrix=correlation_matrix)
 
-    paths = bm.generate_path(dt=1.0, seed=1)
+    paths = bm.generate_path(dt=1, seed=1)
     bm.plot()
 
     print('Brownian motion call value:', bm(end_time))
