@@ -1,4 +1,9 @@
+"""
+This script contains the Vasicek Model for the short rate.
 
+Unit tests are contained in
+fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models.test_vasicek_model.py
+"""
 from datetime import datetime
 import math
 import pandas as pd
@@ -121,14 +126,15 @@ class VasicekModel(ShortRateModel):
         return solution
 
 
-    def marginal_mean(self) -> float:
-        pass
+    def long_term_variance(self) -> float:
+        """
+        Returns the long term variance of the Vasicek Model, equal to sigma**2 / 2*a.
+        """
+        return self.volatility**2 / (2 * self.reversion_scale)
 
-    def marginal_variance(self) -> float:
-        pass
 
     def plot(self) -> None:
-        """ """
+        """ Produces a plot of  """
 
         title_str = f'Vasicek Model Sample Path with Parameters\n' \
                     f'Mean {self.long_term_mean}; Volatility {self.volatility}; Reversion Factor {self.reversion_scale}'
@@ -147,13 +153,14 @@ if __name__ == '__main__':
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2023, 11, 15, 0, 0, 0, 0)
 
-    vm = VasicekModel(long_term_mean=0.025,
+    vm = VasicekModel(long_term_mean=0.04,
                       reversion_scale=2.0,
-                      volatility=0.025,
+                      volatility=0.02,
                       start_date_time=start_time,
                       end_date_time=end_time)
 
-    path = vm.generate_path(dt=1/100, starting_value=0.025, set_path=True, seed=1)
+    path = vm.generate_path(dt=1/100, starting_value=0.08, set_path=True, seed=1)
     vm.plot()
 
     vm(end_time)
+

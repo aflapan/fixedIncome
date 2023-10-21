@@ -1,5 +1,7 @@
 """
 This script contains a class for generating multi-dimensional Brownian Motion paths with optional correlation.
+
+Unit tests are contained in fixedIncome.tests.test_stochastics.test_brownian_motion.py
 """
 
 import matplotlib.pyplot as plt
