@@ -1,56 +1,46 @@
 
-from datetime import date, datetime
-from typing import NamedTuple, Callable
-import math
+from enum import Enum
 import numpy as np
 from typing import NamedTuple, Optional
 from collections.abc import Callable
+from abc import abstractmethod
 
 
 class DriftDiffusionPair(NamedTuple):
-    drift: Callable[[float, float], float]
-    diffusion: Callable[[float, float], float]
-
+    drift: Callable[[float, ...], float]
+    diffusion: Callable[[float, ...], float]
 
 
 class ShortRateModel:
 
     def __init__(self,
-                 drift_diffusion_collection: dict[DriftDiffusionPair],
+                 drift_diffusion_collection: dict[str, DriftDiffusionPair],
                  brownian_motion
                  ) -> None:
-        pass
+        self.drift_diffusion_collection = drift_diffusion_collection
+        self.brownian_motion = brownian_motion
+        self._path = None
 
+    @property
+    def path(self) -> np.ndarray:
+        return self._path
 
-    def generate_sample_path(self, num_increments_per_day: int, num_days: int, ) -> np.array:
-        pass
-
-
-    def generate_sde_euler_paths(
-            drift_function: Callable[[float, float], float],
-            diffusion_function: Callable[[float, float], float],
-            num_paths: int,
-            num_steps: int,
-            end_time: float,
-            starting_value: float = 0.0,
-            correlation_matrix: Optional[np.array] = None
-    ) -> np.array:
+    @abstractmethod
+    def show_drift_diffusion_collection_keys(self) -> tuple[str]:
         """
-        Generates discretized solution paths to the stochastic differential equation
-        dX_t = mu(t, X_t) dt + sigma(t, X_t) dW_t
-        where mu and sigma are the drift and diffusion functions, respectively.
+
         """
-        dt = end_time / num_steps
-        solutions = np.zeros((num_paths, num_steps + 1))
-        solutions[:, 0] = starting_value
-        brownian_increments = generate_brownian_increments(num_paths, num_steps, end_time, correlation_matrix)
 
-        for step in range(num_steps):
-            time = step * dt / end_time
-            drift = np.array([drift_function(time, value) for value in solutions[:, step]])
-            diffusion = np.array([diffusion_function(time, value) for value in solutions[:, step]])
-            increments = drift * dt + diffusion * brownian_increments[:, step]
-            solutions[:, step + 1] = solutions[:, step] + increments
 
-        return solutions
+    @abstractmethod
+    def generate_path(
+            self, dt: float, starting_values: np.ndarray | float, set_path: bool = True, seed: Optional[int] = None
+            ) -> np.array:
+        """
+        An abstract method for any ShortRate Model to generate a sample path from the drift diffusion
+        SDE collection provided when the object was instantiated.
+        """
+
+
+
 
