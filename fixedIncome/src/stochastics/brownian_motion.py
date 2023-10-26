@@ -12,11 +12,53 @@ from typing import Optional
 from collections.abc import Callable
 import pandas as pd
 
+def to_fraction_in_days(time_delta: timedelta) -> float:
+    """ Converts a timedelta object to a float representing a portion of days. """
+    SECONDS_PER_DAY = 24 * 60 * 60  # hours * minutes * seconds
+    total_seconds = time_delta.total_seconds()
+    return total_seconds / SECONDS_PER_DAY
+
+def datetime_to_path_call(
+        datetime_obj: datetime, start_date_time: datetime, end_date_time: datetime, path: Optional[np.ndarray] = None
+) -> float | np.ndarray:
+    """
+    A generic function for interpolating a path, represented as a np.ndarray, using a start and end datetime which
+    are assumed to be the datetimes of the starting and ending indices of the array.
+    The function will linearly interpolate between the nearest indices corresponding to the provided datetime.
+    """
+    if path is None:
+        raise ValueError('Brownian Motion called when path is None. '
+                         'First call generate_path method with set_path variable set to True.')
+
+    if datetime_obj < start_date_time or datetime_obj > end_date_time:
+        raise ValueError(f'Provided datetime {str(datetime_obj)} is outside of'
+                         f'the range {str(start_date_time)} to {str(end_date_time)}.')
+
+    num_steps = path.shape[1]
+    time_diff = end_date_time - start_date_time
+    time_spread = to_fraction_in_days(time_diff)
+    time_since_start = (datetime_obj - start_date_time)
+
+    interpolation_float = (num_steps - 1) * to_fraction_in_days(time_since_start) / time_spread
+    interpolated_lower_index = math.floor(interpolation_float)
+    interpolated_upper_index = math.ceil(interpolation_float)
+
+    if interpolated_lower_index == interpolated_upper_index:
+        return path[:, interpolated_lower_index]
+
+    prev_value = path[:, interpolated_lower_index]
+    next_value = path[:, interpolated_upper_index]
+
+    time_since_prev_index = interpolation_float - interpolated_lower_index
+    time_to_next_index = interpolated_upper_index - interpolation_float
+    total_time = time_since_prev_index + time_to_next_index
+
+    return (time_since_prev_index * next_value + prev_value * time_to_next_index) / total_time
+
 class BrownianMotion(Callable):
     """
     A class for multidimensional brownian motion with optional correlation.
     """
-    SECONDS_PER_DAY = 24 * 60 * 60  # hours * minutes * seconds
     def __init__(self,
                  start_date_time: datetime,
                  end_date_time: datetime,
@@ -50,37 +92,12 @@ class BrownianMotion(Callable):
     def __call__(self, datetime_obj: datetime) -> np.array:
         """
         Shortcut to allow the user to directly call the BrownianMotion datetime rather
-        than index the path directly.
+        than index and interpolate the path directly.
         """
-        if self.path is None:
-            raise ValueError('Brownian Motion called when path is None. '
-                             'First call generate_path method with set_path variable set to True.')
-
-        if datetime_obj < self.start_date_time or datetime_obj > self.end_date_time:
-            raise ValueError(f'Provided datetime {str(datetime_obj)} is outside of'
-                             f'the range {str(self.start_date_time)} to {str(self.end_date_time)}.')
-
-        num_steps = self.path.shape[1]
-        time_diff = self.end_date_time - self.start_date_time
-        time_spread = self.to_fraction_in_days(time_diff)
-        time_since_start = (datetime_obj - self.start_date_time)
-
-        interpolation_float = (num_steps-1) * self.to_fraction_in_days(time_since_start) / time_spread
-        interpolated_lower_index = math.floor(interpolation_float)
-        interpolated_upper_index = math.ceil(interpolation_float)
-
-        if interpolated_lower_index == interpolated_upper_index:
-            return self.path[:, interpolated_lower_index]
-
-        prev_value = self.path[:, interpolated_lower_index]
-        next_value = self.path[:, interpolated_upper_index]
-
-        time_since_prev_index = interpolation_float - interpolated_lower_index
-        time_to_next_index = interpolated_upper_index - interpolation_float
-        total_time = time_since_prev_index + time_to_next_index
-
-        return (time_since_prev_index * next_value + prev_value * time_to_next_index) / total_time
-
+        return datetime_to_path_call(datetime_obj,
+                                     start_date_time=self.start_date_time,
+                                     end_date_time=self.end_date_time,
+                                     path=self.path)
 
     def generate_increments(self, dt: float, seed: Optional[int] = None) -> np.ndarray:
         """
@@ -99,7 +116,7 @@ class BrownianMotion(Callable):
         """
         Generates Brownian Motion sample paths.
 
-        dt is a float whose scale is seconds.
+        dt is a float whose scale is days, that is dt=1 corresponds to dt increments of a single day each.
         """
         num_steps = self.generate_num_steps_from_dt(dt)
         brownian_increments = self.generate_increments(dt, seed=seed)
@@ -114,7 +131,7 @@ class BrownianMotion(Callable):
     def generate_num_steps_from_dt(self, dt: float) -> int:
         """ """
         time_diff = self.end_date_time - self.start_date_time
-        time_diff_in_days = math.ceil(self.to_fraction_in_days(time_diff))
+        time_diff_in_days = math.ceil(to_fraction_in_days(time_diff))
         num_steps = math.ceil(time_diff_in_days / dt)
         return num_steps
 
@@ -128,10 +145,6 @@ class BrownianMotion(Callable):
         plt.grid(alpha=0.25)
         plt.show()
 
-    def to_fraction_in_days(self, time_delta: timedelta) -> float:
-        """ Converts a timedelta object to a float representing a portion of days. """
-        total_seconds = time_delta.total_seconds()
-        return total_seconds/self.SECONDS_PER_DAY
 
 
 #------------------------------------------------------------------------------

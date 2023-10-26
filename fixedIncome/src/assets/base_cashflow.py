@@ -95,6 +95,7 @@ class CashflowKeys(Enum):
     FLOATING_LEG = 'floating leg'
     PROTECTION_LEG = 'protection leg'
     PREMIUM_LEG = 'premium leg'
+    MARK_TO_MARKET = 'mark to market'
 
 class CashflowCollection(Set):
     """

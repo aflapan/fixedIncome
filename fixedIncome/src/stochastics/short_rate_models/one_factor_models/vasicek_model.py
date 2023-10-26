@@ -1,11 +1,11 @@
 """
 This script contains the Vasicek Model for the short rate.
+Reference, *Fixed Income Securities, 4th Ed.* by Tuckman and Serrat, page 205.
 
 Unit tests are contained in
 fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models.test_vasicek_model.py
 """
 from datetime import datetime
-import math
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,8 +21,6 @@ def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volat
     a is a positive float representing the mean reversion scaling,
     m is the long-term mean for the interest rate, and
     sigma is the volatility.
-
-    Reference, *Fixed Income Securities, 4th Ed.* by Tuckman and Serrat, page 205.
     """
     def drift_fxcn(time: float, current_value: float) -> float:
         return reversion_scale * (long_term_mean - current_value)
@@ -33,11 +31,9 @@ def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volat
     return DriftDiffusionPair(drift=drift_fxcn, diffusion=diffusion_fxcn)
 
 
-
-
 class VasicekModel(ShortRateModel):
     """
-    A class for generating samples of the Vasicek short rate model.
+    A class for generating sample paths of the Vasicek short rate model.
     """
 
     def __init__(self, long_term_mean, reversion_scale, volatility, start_date_time, end_date_time) -> None:
@@ -56,46 +52,7 @@ class VasicekModel(ShortRateModel):
         self.keys = ('short_rate',)
 
         super().__init__(drift_diffusion_collection={self.keys[0]: self.drift_diffusion_pair},
-                         brownian_motion=bm)
-
-
-    def __call__(self, datetime_obj: datetime) -> float:
-        """
-        Allows the user to call the object directly using a datetime object directly.
-        If the datetime is an interpolation datetime between the start and end datetimes,
-        then the value will be the path value at the corresponding index. Otherwise, the return
-        value will be linearly interpolated between the previous and next path values.
-        """
-        if self.path is None:
-            raise ValueError('Brownian Motion called when path is None. '
-                             'First call generate_path method with set_path variable set to True.')
-
-        if datetime_obj < self.start_date_time or datetime_obj > self.end_date_time:
-            raise ValueError(f'Provided datetime {str(datetime_obj)} is outside of'
-                             f'the range {str(self.start_date_time)} to {str(self.end_date_time)}.')
-
-        num_steps = len(self.path)
-        time_diff = self.end_date_time - self.start_date_time
-        time_spread = self.brownian_motion.to_fraction_in_days(time_diff)
-        time_since_start = (datetime_obj - self.start_date_time)
-
-        interpolation_float = (num_steps - 1) * self.brownian_motion.to_fraction_in_days(time_since_start) / time_spread
-        interpolated_lower_index = math.floor(interpolation_float)
-        interpolated_upper_index = math.ceil(interpolation_float)
-        if interpolated_lower_index == interpolated_upper_index:
-            return self.path[interpolated_lower_index]
-
-        prev_value = self.path[interpolated_lower_index]
-        next_value = self.path[interpolated_upper_index]
-
-        time_since_prev_index = interpolation_float - interpolated_lower_index
-        time_to_next_index = interpolated_upper_index - interpolation_float
-        total_time = time_since_prev_index + time_to_next_index
-
-        return (time_since_prev_index * next_value + prev_value * time_to_next_index) / total_time
-
-
-
+                         brownian_motion=bm)  # inherits __call__ from ShortRate class
 
     def show_drift_diffusion_collection_keys(self) -> tuple[str]:
         """
@@ -109,17 +66,17 @@ class VasicekModel(ShortRateModel):
         """ Generates the Vasicek solution path through the Euler Discretization method. """
         drift_fxcn, diffusion_fxcn = self.drift_diffusion_pair
         brownian_increments = self.brownian_motion.generate_increments(dt=dt, seed=seed).flatten()
-        solution = np.empty((len(brownian_increments)+1,))
+        solution = np.empty((1,  len(brownian_increments)+1))
         current_val = float(starting_value)
         time = 0
         for index, shock in enumerate(brownian_increments):
-            solution[index] = current_val
+            solution[0, index] = current_val
             drift_increment = drift_fxcn(time, current_val) * dt
             diffusion_shock = diffusion_fxcn(time, current_val) * shock  # shock contains sqrt(dt) scaling
             current_val = current_val + drift_increment + diffusion_shock
             time += dt
 
-        solution[len(brownian_increments)] = current_val  # solution has one more slot
+        solution[0, len(brownian_increments)] = current_val  # solution has one more slot
         if set_path:
             self._path = solution
 
@@ -140,7 +97,7 @@ class VasicekModel(ShortRateModel):
                     f'Mean {self.long_term_mean}; Volatility {self.volatility}; Reversion Factor {self.reversion_scale}'
         plt.figure(figsize=(15, 6))
         plt.title(title_str)
-        date_range = pd.date_range(start=self.start_date_time, end=self.end_date_time, periods=len(self.path))
+        date_range = pd.date_range(start=self.start_date_time, end=self.end_date_time, periods=len(self.path.flatten()))
         plt.plot(date_range, self.path.T * 100, linewidth=0.5, alpha=1)
         plt.axhline(self.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
         plt.ylabel('Short Rate (%)')
@@ -161,6 +118,4 @@ if __name__ == '__main__':
 
     path = vm.generate_path(dt=1/100, starting_value=0.08, set_path=True, seed=1)
     vm.plot()
-
-    vm(end_time)
 
