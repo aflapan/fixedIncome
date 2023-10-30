@@ -4,7 +4,8 @@ A base class to represent a cashflow consisting of payment dates and payment amo
 from __future__ import annotations
 from datetime import date
 import operator
-from typing import NamedTuple, Optional
+from typing import Optional
+from dataclasses import dataclass
 import pandas as pd
 from collections.abc import Iterable, Set
 import bisect
@@ -13,10 +14,10 @@ from abc import abstractmethod
 from fixedIncome.src.curves.curve_enumerations import KnotValuePair
 from fixedIncome.src.curves.base_curve import DiscountCurve
 
-
-class Payment(NamedTuple):
+@dataclass
+class Payment:
     payment_date: date
-    payment: Optional[float] = None
+    payment: Optional[float]
 
 
 class Cashflow(Iterable):
