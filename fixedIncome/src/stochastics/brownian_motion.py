@@ -12,7 +12,7 @@ from typing import Optional
 from collections.abc import Callable
 import pandas as pd
 
-def to_fraction_in_days(time_delta: timedelta) -> float:
+def time_fraction_in_days(time_delta: timedelta) -> float:
     """ Converts a timedelta object to a float representing a portion of days. """
     SECONDS_PER_DAY = 24 * 60 * 60  # hours * minutes * seconds
     total_seconds = time_delta.total_seconds()
@@ -22,9 +22,10 @@ def datetime_to_path_call(
         datetime_obj: datetime, start_date_time: datetime, end_date_time: datetime, path: Optional[np.ndarray] = None
 ) -> float | np.ndarray:
     """
-    A generic function for interpolating a path, represented as a np.ndarray, using a start and end datetime which
-    are assumed to be the datetimes of the starting and ending indices of the array.
-    The function will linearly interpolate between the nearest indices corresponding to the provided datetime.
+    A generic function for interpolating a path, represented as a np.ndarray, using a
+    start and end datetime which are assumed to be the datetimes of the starting and
+    ending indices of the array. The function will linearly interpolate path values
+    between the nearest indices corresponding to the provided datetime.
     """
     if path is None:
         raise ValueError('Brownian Motion called when path is None. '
@@ -34,12 +35,12 @@ def datetime_to_path_call(
         raise ValueError(f'Provided datetime {str(datetime_obj)} is outside of'
                          f'the range {str(start_date_time)} to {str(end_date_time)}.')
 
-    num_steps = path.shape[1]
+    num_steps = path.shape[1] if len(path.shape) >= 2 else len(path)
     time_diff = end_date_time - start_date_time
-    time_spread = to_fraction_in_days(time_diff)
+    time_spread = time_fraction_in_days(time_diff)
     time_since_start = (datetime_obj - start_date_time)
 
-    interpolation_float = (num_steps - 1) * to_fraction_in_days(time_since_start) / time_spread
+    interpolation_float = (num_steps - 1) * time_fraction_in_days(time_since_start) / time_spread
     interpolated_lower_index = math.floor(interpolation_float)
     interpolated_upper_index = math.ceil(interpolation_float)
 
@@ -131,7 +132,7 @@ class BrownianMotion(Callable):
     def generate_num_steps_from_dt(self, dt: float) -> int:
         """ """
         time_diff = self.end_date_time - self.start_date_time
-        time_diff_in_days = math.ceil(to_fraction_in_days(time_diff))
+        time_diff_in_days = math.ceil(time_fraction_in_days(time_diff))
         num_steps = math.ceil(time_diff_in_days / dt)
         return num_steps
 
