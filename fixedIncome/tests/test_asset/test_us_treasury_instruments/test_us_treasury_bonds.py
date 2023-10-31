@@ -13,9 +13,10 @@ from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments impo
 # Create a series of test objects.
 purchase_date = date(2023, 2, 27)
 
+# Two Year
 # Four Week
 four_wk = UsTreasuryBond(price=99.648833,
-                         coupon=0.00,
+                         coupon_rate=0.00,
                          principal=100,
                          tenor='1M',
                          payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -24,7 +25,7 @@ four_wk = UsTreasuryBond(price=99.648833,
 
 
 one_yr = UsTreasuryBond(price=95.151722,
-                        coupon=0.00,
+                        coupon_rate=0.00,
                         principal=100,
                         tenor='1Y',
                         payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -33,7 +34,7 @@ one_yr = UsTreasuryBond(price=95.151722,
 
 # Two Year
 two_yr = UsTreasuryBond(price=99.909356,
-                        coupon=4.625,
+                        coupon_rate=4.625,
                         principal=100,
                         tenor='2Y',
                         purchase_date=purchase_date,
@@ -42,7 +43,7 @@ two_yr = UsTreasuryBond(price=99.909356,
 
 # Three Year
 three_yr = UsTreasuryBond(price=99.795799,
-                          coupon=4.0000,
+                          coupon_rate=4.0000,
                           principal=100,
                           tenor='3Y',
                           purchase_date=purchase_date,
@@ -51,7 +52,7 @@ three_yr = UsTreasuryBond(price=99.795799,
 
 # Five Year
 five_yr = UsTreasuryBond(price=99.511842,
-                         coupon=4.000,
+                         coupon_rate=4.000,
                          principal=100,
                          tenor='5Y',
                          purchase_date=purchase_date,
@@ -60,7 +61,7 @@ five_yr = UsTreasuryBond(price=99.511842,
 
 # Seven Year
 seven_yr = UsTreasuryBond(price=99.625524,
-                          coupon=4.000,
+                          coupon_rate=4.000,
                           principal=100,
                           tenor='7Y',
                           purchase_date=purchase_date,
@@ -68,7 +69,7 @@ seven_yr = UsTreasuryBond(price=99.625524,
 
 # Ten Year
 ten_yr = UsTreasuryBond(price=99.058658,
-                        coupon=3.5000,
+                        coupon_rate=3.5000,
                         principal=100,
                         tenor='10Y',
                         purchase_date=purchase_date,
@@ -76,7 +77,7 @@ ten_yr = UsTreasuryBond(price=99.058658,
 
 # Twenty Year
 twenty_yr = UsTreasuryBond(price=98.601167,
-                           coupon=3.875,
+                           coupon_rate=3.875,
                            principal=100,
                            tenor='20Y',
                            purchase_date=purchase_date,
@@ -85,7 +86,7 @@ twenty_yr = UsTreasuryBond(price=98.601167,
 
 # Thirty Year
 thirty_yr = UsTreasuryBond(price=98.898317,
-                           coupon=3.625,
+                           coupon_rate=3.625,
                            principal=100,
                            tenor='30Y',
                            purchase_date=purchase_date,
@@ -107,7 +108,7 @@ def test_accrued_interest_example() -> None:
     PASS_THRESH = 0.005  # less than a half of a cent off, within rounding error
 
     test_bond = UsTreasuryBond(price=10_000,  # testing accrued interest, price does not matter here.
-                               coupon=0.625,
+                               coupon_rate=0.625,
                                principal=10_000,
                                tenor='10Y',
                                purchase_date=date(2021, 5, 14),  # settlement day corresponds to May 17th, 2021

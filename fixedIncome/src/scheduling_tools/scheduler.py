@@ -1,5 +1,7 @@
 """
 An object for
+
+Unit tests are contained in fixedIncome.tests.test_scheduling_tools.test_scheduler.py
 """
 
 
@@ -132,10 +134,27 @@ class Scheduler(object):
         count = 0
         dates = []
         date_obj = start_date
-        while date_obj <= end_date and count <= max_dates:
-            dates.append(date_obj)
-            date_obj += increment
-            count += 1
+
+        if isinstance(increment, timedelta):
+            positive_delta = increment.total_seconds() >= 0
+
+        elif isinstance(increment, relativedelta):
+            positive_delta = Scheduler._is_relative_delta_positive(increment)
+
+        else:
+            raise TypeError(f'Increment of type {type(increment)} is not a valid increment. '
+                            f'Only timedelta and relativedelta are allowed.')
+
+        if positive_delta:
+            while date_obj <= end_date and count <= max_dates:
+                dates.append(date_obj)
+                date_obj += increment
+                count += 1
+        else:  # increment is a negative amount of time
+            while date_obj >= end_date and count <= max_dates:
+                dates.append(date_obj)
+                date_obj += increment
+                count += 1
 
         return dates
 
@@ -169,5 +188,21 @@ class Scheduler(object):
         else:
             return Scheduler.add_business_days(date_obj, business_days=-1, holiday_calendar=holiday_calendar)
 
+    @staticmethod
+    def _is_relative_delta_positive(increment: relativedelta) -> bool:
+        """ A helper method which tests if a relative delta is a positive or negative
+        increment of time.
+
+        It is done by assuming each year has 12 months, and each month has 30 days. Thus, the total
+        number of days in the relative_delta is given by
+        Total Days = Years * 12 * 30 + Months * 30 + Days,
+        and the function returns the boolean test Total Days >= 0.
+        """
+        normalized_increment = increment.normalized()
+        num_days_for_years = normalized_increment.years * 12 * 30
+        num_days_for_months = normalized_increment.months * 30
+        num_days = normalized_increment.days
+        total_days = num_days_for_years + num_days_for_months + num_days
+        return total_days >= 0
 
 

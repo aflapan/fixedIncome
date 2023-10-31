@@ -2,6 +2,7 @@
 Unit tests for fixedIncome.src.scheduling_tools.scheduler.py
 """
 from datetime import date
+from dateutil.relativedelta import relativedelta
 from fixedIncome.src.scheduling_tools.holidays import (US_FEDERAL_HOLIDAYS,
                                                        Holiday,
                                                        generate_all_holidays,
@@ -79,7 +80,40 @@ def test_generate_business_days_across_weekend() -> None:
         date(2023, 10, 23), date(2023, 10, 24), date(2023, 10, 25), date(2023, 10, 26), date(2023, 10, 27)
      ]
 
-    test_results = Scheduler.generate_us_business_days(from_date=date(2023, 10, 15),
-                                                       to_date=date(2023, 10, 29),
+    test_results = Scheduler.generate_us_business_days(start_date=date(2023, 10, 15),
+                                                       end_date=date(2023, 10, 29),
                                                        holiday_calendar=US_FEDERAL_HOLIDAYS)
     assert test_results == expected_result
+
+def test_generate_date_by_increments() -> None:
+    """
+    Tests that generating dates starting with a date, ending with a future date,
+    and incrementing by a positive unit of time generates an increasing sequence of dates.
+    """
+    increment = relativedelta(months=1)
+    start_date = date(2022, 1, 1)
+    end_date = date(2023, 1, 1)
+    expected_result = [date(2022, 1, 1), date(2022, 2, 1), date(2022, 3, 1), date(2022, 4, 1),
+                       date(2022, 5, 1), date(2022, 6, 1), date(2022, 7, 1), date(2022, 8, 1),
+                       date(2022, 9, 1), date(2022, 10, 1), date(2022, 11, 1), date(2022, 12, 1), date(2023, 1, 1)]
+    test_result = Scheduler.generate_dates_by_increments(start_date, end_date, increment)
+
+    assert test_result == expected_result
+
+
+def test_generate_date_by_increments_negative_increments() -> None:
+    """
+    Tests that generating dates starting with a date in the future, ending with a previous date,
+    and incrementing by a negative unit of time generates a decreasing sequence of dates.
+    """
+    increment = relativedelta(months=-1)
+    start_date = date(2023, 1, 1)
+    end_date = date(2022, 1, 1)
+    expected_result = [date(2023, 1, 1), date(2022, 12, 1), date(2022, 11, 1), date(2022, 10, 1),
+                       date(2022, 9, 1), date(2022, 8, 1), date(2022, 7, 1), date(2022, 6, 1),
+                       date(2022, 5, 1), date(2022, 4, 1), date(2022, 3, 1), date(2022, 2, 1), date(2022, 1, 1)]
+    test_result = Scheduler.generate_dates_by_increments(start_date, end_date, increment)
+
+    assert test_result == expected_result
+
+
