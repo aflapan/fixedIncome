@@ -5,7 +5,7 @@ Unit tests are contained in fixedIncome.tests.test_scheduling_tools.test_schedul
 """
 
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import pandas as pd  # type: ignore
 from fixedIncome.src.scheduling_tools.schedule_enumerations import Weekdays
@@ -139,7 +139,7 @@ class Scheduler(object):
             positive_delta = increment.total_seconds() >= 0
 
         elif isinstance(increment, relativedelta):
-            positive_delta = Scheduler._is_relative_delta_positive(increment)
+            positive_delta = Scheduler._is_relative_delta_positive(increment, date_obj)
 
         else:
             raise TypeError(f'Increment of type {type(increment)} is not a valid increment. '
@@ -189,20 +189,12 @@ class Scheduler(object):
             return Scheduler.add_business_days(date_obj, business_days=-1, holiday_calendar=holiday_calendar)
 
     @staticmethod
-    def _is_relative_delta_positive(increment: relativedelta) -> bool:
+    def _is_relative_delta_positive(increment: relativedelta, base_date: date | datetime) -> bool:
         """ A helper method which tests if a relative delta is a positive or negative
         increment of time.
-
-        It is done by assuming each year has 12 months, and each month has 30 days. Thus, the total
-        number of days in the relative_delta is given by
-        Total Days = Years * 12 * 30 + Months * 30 + Days,
-        and the function returns the boolean test Total Days >= 0.
         """
-        normalized_increment = increment.normalized()
-        num_days_for_years = normalized_increment.years * 12 * 30
-        num_days_for_months = normalized_increment.months * 30
-        num_days = normalized_increment.days
-        total_days = num_days_for_years + num_days_for_months + num_days
-        return total_days >= 0
+        test_date = increment + base_date
+
+        return test_date >= base_date
 
 
