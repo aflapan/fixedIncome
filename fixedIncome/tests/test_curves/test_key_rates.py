@@ -16,6 +16,7 @@ from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConven
 
 #----------------------------------------------------------------------
 # Construct the objects to test
+ONE_BASIS_POINT = 0.0001
 
 purchase_date = date(2023, 2, 27)
 
@@ -147,7 +148,7 @@ def test_default_KeyRate_adjustment_function_is_default_bump_at_key_rate_date():
     """
 
     interpolation_values = [kr_obj(kr_obj.key_rate_date) for kr_obj in key_rate_list]
-    assert all(abs(val - 0.01) < PASS_THRESH for val in interpolation_values)
+    assert all(abs(val - ONE_BASIS_POINT) < PASS_THRESH for val in interpolation_values)
 
 
 def test_left_dates_adjust_function_evaluation_for_key_rate_with_prior_None():
@@ -158,7 +159,7 @@ def test_left_dates_adjust_function_evaluation_for_key_rate_with_prior_None():
 
     four_wk_kr.set_prior_date(None)
     test_dates = pd.date_range(start=date(2000, 1, 1), end=four_wk_kr.key_rate_date)  # creates timestamps
-    assert all(abs(four_wk_kr(date.date()) - 0.01) < PASS_THRESH for date in test_dates)
+    assert all(abs(four_wk_kr(date.date()) - ONE_BASIS_POINT) < PASS_THRESH for date in test_dates)
 
 
 def test_right_dates_adjust_function_evaluation_for_key_rate_with_next_None():
@@ -169,7 +170,7 @@ def test_right_dates_adjust_function_evaluation_for_key_rate_with_next_None():
 
     thirty_yr_kr.set_next_date(None)
     test_dates = pd.date_range(start=thirty_yr_kr.key_rate_date, end=date(2100, 1, 1))  # creates timestamps
-    assert all(abs(thirty_yr_kr(date.date()) - 0.01) < PASS_THRESH for date in test_dates)
+    assert all(abs(thirty_yr_kr(date.date()) - ONE_BASIS_POINT) < PASS_THRESH for date in test_dates)
 
 
 def test_KeyRateCollection_adjustment_function_is_parallel_shift():
@@ -184,7 +185,7 @@ def test_KeyRateCollection_adjustment_function_is_parallel_shift():
     kr_collection._set_dates_in_collection()
     test_dates = pd.date_range(start=date(2000, 1, 1), end=date(2100, 1, 1))
     collection_vals = (kr_collection(date_val.date()) for date_val in test_dates)
-    assert all(abs(val - 0.01) < PASS_THRESH for val in collection_vals)
+    assert all(abs(val - ONE_BASIS_POINT) < PASS_THRESH for val in collection_vals)
 
 
 def test_KeyRateCollection_addition_of_halves_gives_collection():
