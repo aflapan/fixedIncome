@@ -430,7 +430,7 @@ class YieldCurveFactory(object):
             solution_knot = KnotValuePair(knot=instrument.to_knot_value_pair().knot,
                                           value=float(convergence_solution['x']))
 
-            if index == 4:
+            if index == 4:  # TODO: What is this??
                 yield_curve_obj.present_value(instrument)
 
         return yield_curve_obj

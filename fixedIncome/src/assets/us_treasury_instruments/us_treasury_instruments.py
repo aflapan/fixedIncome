@@ -118,29 +118,29 @@ class UsTreasuryBond(CashflowCollection):
     #--------------------------------------------------------------------------
     # Pricing utility functions
     #TODO: fix this
-    def calculate_accrued_interest(self) -> float:
+    def calculate_accrued_interest(self, reference_date: Optional[date] = None) -> float:
         """
         Computes the amount of accrued interest between the last payment date
         or dated-date and the settlement date.
 
         Returns a float representing the amount of accrued interest.
         """
-
         if self.payment_frequency == PaymentFrequency.ZERO_COUPON:
             return 0.0
 
+        settlement_date = self.settlement_date if reference_date is None else self.calculate_settlement_date(reference_date)
         if self.settlement_date < self.dated_date:
             raise ValueError(f'Settlement date {self.settlement_date} is before the dated date {self.dated_date}'
                              f' for us_treasury_instruments\n{self}.')
 
         # Find last payment accrual date.
         # if the first coupon payment date is in the future, reference date is when interest beings accruing
-        elif self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date >= self.settlement_date:
+        elif self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date >= settlement_date:
             reference_date = self.dated_date
             following_date = self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date
 
         else:
-            date_index = bisect.bisect_right(self[CashflowKeys.COUPON_PAYMENTS], self.purchase_date)
+            date_index = bisect.bisect_right([payment.payment_date for payment in self[CashflowKeys.COUPON_PAYMENTS]], self.purchase_date)
             previous_date = self[CashflowKeys.COUPON_PAYMENTS][date_index-1].unadjusted_payment_date
             following_date = self[CashflowKeys.COUPON_PAYMENTS][date_index].unadjusted_payment_date
             reference_date = previous_date
@@ -173,14 +173,16 @@ class UsTreasuryBond(CashflowCollection):
             case _:
                 return self.principal * self.coupon_rate / (100 * self.num_payments_per_year)  # coupon_rate is assumed to be in %
 
-    def get_full_price(self) -> float:
+    def get_full_price(self, reference_date: Optional[date] = None) -> float:
         """
         Calculates the full price (also referred to as the 'dirty' or 'invoice'
         price.) Which is equal to the clean market price plus the amount
         of accrued interest.
         """
+        reference_date = reference_date if reference_date is not None else self.purchase_date
+
         if self.accrued_interest is None:
-            self.accrued_interest = self.calculate_accrued_interest()
+            self.accrued_interest = self.calculate_accrued_interest(reference_date)
 
         # normalize the amount of accrued interest by the principal amount
         # Put into 100 principal convention.
@@ -197,7 +199,7 @@ class UsTreasuryBond(CashflowCollection):
         length_str_slice = slice(-1)
         length = int(self.tenor[length_str_slice])
 
-        match(self.tenor[-1]):
+        match self.tenor[-1]:
             case 'Y':
                 dated_date = self.maturity_date - relativedelta(years=length)
             case 'M':
@@ -281,36 +283,87 @@ class UsTreasuryBond(CashflowCollection):
         else:
             coupon_payments = []
 
-        coupon_payments.sort(key= lambda payment: payment.payment_date)  # Sort by payment date
+        coupon_payments.sort(key=lambda payment: payment.payment_date)  # Sort by payment date
         return Cashflow(coupon_payments)
 
-    def calculate_settlement_date(self) -> date:
+    def calculate_settlement_date(self, reference_date: Optional[date] = None) -> date:
         """
         Method to compute the settlement date based on the purchase date and the settlement_convention.
         """
+
+        purchase_date = reference_date if reference_date is not None else self.purchase_date
         match self.settlement_convention:
             case SettlementConvention.T_PLUS_ZERO_BUSINESS:
-                return Scheduler.add_business_days(self.purchase_date,
+                return Scheduler.add_business_days(purchase_date,
                                                    business_days=0,
                                                    holiday_calendar=self.holiday_calendar)
 
             case SettlementConvention.T_PLUS_ONE_BUSINESS:
-                return Scheduler.add_business_days(self.purchase_date,
+                return Scheduler.add_business_days(purchase_date,
                                                    business_days=1,
                                                    holiday_calendar=self.holiday_calendar)
 
             case SettlementConvention.T_PLUS_TWO_BUSINESS:
-                return Scheduler.add_business_days(self.purchase_date,
+                return Scheduler.add_business_days(purchase_date,
                                                    business_days=2,
                                                    holiday_calendar=self.holiday_calendar)
 
             case SettlementConvention.T_PLUS_THREE_BUSINESS:
-                return Scheduler.add_business_days(self.purchase_date,
+                return Scheduler.add_business_days(purchase_date,
                                                    business_days=3,
                                                    holiday_calendar=self.holiday_calendar)
 
             case _:
                 raise ValueError(f"Settlement Convention {self.settlement_convention} is invalid.")
+
+    #------------------------------------------------------
+    # Yield to Maturity calculations
+
+    def discount_cashflows_by_fixed_rate(self, fixed_rate: float | np.ndarray, reference_date: Optional[date] = None) -> float:
+        """
+        Discounts the future cashflows
+        """
+        fixed_rate = float(fixed_rate)
+        if reference_date is None:
+            reference_date = self.purchase_date
+
+        present_value = 0.0
+        # Accumulate discounted coupon cashflows
+        for payment in self[CashflowKeys.COUPON_PAYMENTS]:  # Zero-coupon bonds should have empty iterable here
+            if self.is_payment_received(payment):
+                accrual = DayCountCalculator.compute_accrual_length(reference_date, payment.payment_date, self.day_count_convention)
+                accrual_times_num_payments = accrual * self.num_payments_per_year
+                accrual_df = 1 / (1 + fixed_rate / self.num_payments_per_year) ** accrual_times_num_payments
+                present_value += accrual_df * payment.payment
+
+        # add discounted principal re-payment
+        for payment in self[CashflowKeys.SINGLE_PAYMENT]:
+            if self.is_payment_received(payment):
+                accrual = DayCountCalculator.compute_accrual_length(reference_date, payment.payment_date,
+                                                                    self.day_count_convention)
+                accrual_times_num_payments = accrual * self.num_payments_per_year
+                accrual_df = 1 / (1 + fixed_rate / self.num_payments_per_year) ** accrual_times_num_payments
+                present_value += accrual_df * payment.payment
+
+        return present_value
+
+
+    def yield_to_maturity(self, reference_date: Optional[date] = None) -> float:
+        """
+
+        """
+        if reference_date is None:
+            reference_date = self.purchase_date
+
+        full_price = self.get_full_price(reference_date)
+        def diff_from_full_price(fixed_rate) -> np.array:
+            return np.array([full_price - self.discount_cashflows_by_fixed_rate(fixed_rate, reference_date)])
+
+        solution = scipy.optimize.root(diff_from_full_price,
+                                       x0=np.array([0.0]),
+                                       tol=1E-8)
+
+        return float(solution['x'])
 
 
 

@@ -140,14 +140,14 @@ def test_yield_to_maturity_present_value() -> None:
 
     PASS_THRESH = 1e-10
 
-    ytms = [bond.calculate_yield_to_maturity() for bond in long_term_bond_collection]
+    ytms = (bond.yield_to_maturity() for bond in long_term_bond_collection)
 
-    present_values = [bond.calculate_present_value_for_fixed_yield(ytm) for (bond, ytm)
-                      in zip(long_term_bond_collection, ytms)]
+    present_values = (bond.discount_cashflows_by_fixed_rate(ytm) for (bond, ytm)
+                      in zip(long_term_bond_collection, ytms))
 
-    full_prices = [bond.get_full_price() for bond in long_term_bond_collection]
+    full_prices = (bond.get_full_price() for bond in long_term_bond_collection)
 
-    assert all([abs(pv - fp) < PASS_THRESH for (pv, fp) in zip(present_values, full_prices)])
+    assert all(abs(pv - fp) < PASS_THRESH for (pv, fp) in zip(present_values, full_prices))
 
 
 def test_that_cashflow_coupon_payments_align_with_schedule() -> None:
@@ -168,3 +168,21 @@ def test_principal_repayment_date_equals_last_coupon_date() -> None:
     """
     assert all(bond[CashflowKeys.COUPON_PAYMENTS][-1].payment_date == bond[CashflowKeys.SINGLE_PAYMENT][0].payment_date
                for bond in long_term_bond_collection)
+
+def test_discount_cashflows_by_zero_returns_sum_of_coupon_and_principal() -> None:
+    """
+    Tests that when discounting a bond using semi-annual compounding at a rate of 0%
+    results in a present value which is just the sum of all payments.
+    """
+    PASS_THRESH = 1E-10
+    test_value = thirty_yr.discount_cashflows_by_fixed_rate(fixed_rate=0.0)
+    coupon_sum = sum(payment.payment for payment in thirty_yr[CashflowKeys.COUPON_PAYMENTS])
+    principal_sum = sum(payment.payment for payment in thirty_yr[CashflowKeys.SINGLE_PAYMENT])
+    total_cashflow_sum = coupon_sum + principal_sum
+    assert abs(total_cashflow_sum - test_value) < PASS_THRESH
+
+def test_yield_to_maturity_computes() -> None:
+    """
+    """
+    ten_yr.yield_to_maturity()
+    assert True

@@ -1,9 +1,10 @@
 from datetime import date
-import math
+import matplotlib.pyplot as plt
 
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention, PaymentFrequency
 from fixedIncome.src.curves.curve_enumerations import InterpolationMethod
 from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import (ONE_BASIS_POINT,
                                                                                     UsTreasuryBond)
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
@@ -64,22 +65,34 @@ def main(bond_collection, curve_factory) -> None:
 
     #kr_collection = KeyRateCollection(key_rate_list)
 
-    two_yr_kr.set_bump_val(0.01)
+    two_yr_kr.set_bump_val(0.0001)
 
     yield_curve.plot(adjustment=two_yr_kr)
 
 
     # DV01 and convexity calculations
 
-    durations = [yield_curve.duration(bond) for bond in bond_collection]
-    print("Duration values are...")
-    print(durations)
+    #durations = [yield_curve.duration(bond) for bond in bond_collection]
+    #print("Duration values are...")
+    #print(durations)
 
-    convexities = [yield_curve.convexity(bond) for bond in bond_collection]
-    print("Convexity values are...")
-    print(convexities)
+    #convexities = [yield_curve.convexity(bond) for bond in bond_collection]
+    #print("Convexity values are...")
+    #print(convexities)
 
-    yield_curve.plot_price_curve(thirty_yr)
+    #yield_curve.plot_price_curve(thirty_yr)
+
+
+    dates = Scheduler.generate_us_business_days(purchase_date, date(2024, 8, 27), dict())
+    ytms = [two_yr.yield_to_maturity(date_obj)*100 for date_obj in dates]
+    plt.figure(figsize=(10, 6))
+    plt.plot(dates, ytms)
+    plt.grid(alpha=0.25)
+    plt.title(f'Yield to Maturity of a Two Year Treasury Bond as the Purchase Date Rolls Forward in Time\n'
+              f'Clean Price {two_yr.price:0.2f} and Maturity Date {two_yr.maturity_date}')
+    plt.xlabel('Purchase Date')
+    plt.ylabel('Yield to Maturity (%)')
+    plt.show()
 
 
     #----------------------------------------------------------------
@@ -102,7 +115,7 @@ if __name__ == '__main__':
 
     # Four Week
     four_wk = UsTreasuryBond(price=99.648833,
-                             coupon=0.00,
+                             coupon_rate=0.00,
                              principal=100,
                              tenor='1M',
                              payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -110,7 +123,7 @@ if __name__ == '__main__':
                              maturity_date=date(2023, 3, 28))
 
     three_month = UsTreasuryBond(price=98.63,
-                   coupon=0.00,
+                   coupon_rate=0.00,
                    principal=100,
                    tenor='3M',
                    payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -118,7 +131,7 @@ if __name__ == '__main__':
                    maturity_date=date(2023, 5, 28))
 
     six_month = UsTreasuryBond(price=97.20,
-                   coupon=0.00,
+                   coupon_rate=0.00,
                    principal=100,
                    tenor='6M',
                    payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -126,7 +139,7 @@ if __name__ == '__main__':
                    maturity_date=date(2023, 8, 28))
 
     one_yr = UsTreasuryBond(price=94.724,
-                  coupon=0.00,
+                  coupon_rate=0.00,
                   principal=100,
                   tenor='1Y',
                   payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -135,7 +148,7 @@ if __name__ == '__main__':
 
     # Two Year
     two_yr = UsTreasuryBond(price=99 + 9/32,
-                  coupon=5.00,
+                  coupon_rate=5.00,
                   principal=100,
                   tenor='2Y',
                   purchase_date=purchase_date,
@@ -143,7 +156,7 @@ if __name__ == '__main__':
 
     # Three Year
     three_yr = UsTreasuryBond(price=99 + 3/32,
-                    coupon=4.625,
+                    coupon_rate=4.625,
                     principal=100,
                     tenor='3Y',
                     purchase_date=purchase_date,
@@ -151,7 +164,7 @@ if __name__ == '__main__':
 
     # Five Year
     five_yr = UsTreasuryBond(price=99 + 4/32,
-                   coupon=4.625,
+                   coupon_rate=4.625,
                    principal=100,
                    tenor='5Y',
                    purchase_date=purchase_date,
@@ -159,7 +172,7 @@ if __name__ == '__main__':
 
     # Seven Year
     seven_yr = UsTreasuryBond(price=98 + 9/32,
-                    coupon=4.625,
+                    coupon_rate=4.625,
                     principal=100,
                     tenor='7Y',
                     purchase_date=purchase_date,
@@ -167,7 +180,7 @@ if __name__ == '__main__':
 
     # Ten Year
     ten_yr = UsTreasuryBond(price=92 + 8/32,
-                  coupon=3.875,
+                  coupon_rate=3.875,
                   principal=100,
                   tenor='10Y',
                   purchase_date=purchase_date,
@@ -175,7 +188,7 @@ if __name__ == '__main__':
 
     # Twenty Year
     twenty_yr = UsTreasuryBond(price=90.052,
-                     coupon=4.375,
+                     coupon_rate=4.375,
                      principal=100,
                      tenor='20Y',
                      purchase_date=purchase_date,
@@ -183,7 +196,7 @@ if __name__ == '__main__':
 
     # Thirty Year
     thirty_yr = UsTreasuryBond(price=86 + 9/32,
-                     coupon=4.125,
+                     coupon_rate=4.125,
                      principal=100,
                      tenor='30Y',
                      purchase_date=purchase_date,
