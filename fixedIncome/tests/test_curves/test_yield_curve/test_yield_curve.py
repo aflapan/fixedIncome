@@ -16,7 +16,7 @@ purchase_date = date(2023, 2, 27)
 
 # Four Week
 four_wk = UsTreasuryBond(price=99.648833,
-                coupon=0.00,
+                coupon_rate=0.00,
                 principal=100,
                 tenor='1M',
                 payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -26,7 +26,7 @@ four_wk = UsTreasuryBond(price=99.648833,
 
 
 one_yr = UsTreasuryBond(price=95.151722,
-                coupon=0.00,
+                coupon_rate=0.00,
                 principal=100,
                 tenor='1Y',
                 payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -35,7 +35,7 @@ one_yr = UsTreasuryBond(price=95.151722,
 
 # Two Year
 two_yr = UsTreasuryBond(price=99.909356,
-                coupon=4.625,
+                coupon_rate=4.625,
                 principal=100,
                 tenor='2Y',
                 purchase_date=purchase_date,
@@ -44,7 +44,7 @@ two_yr = UsTreasuryBond(price=99.909356,
 
 # Three Year
 three_yr = UsTreasuryBond(price=99.795799,
-                  coupon=4.0000,
+                  coupon_rate=4.0000,
                   principal=100,
                   tenor='3Y',
                   purchase_date=purchase_date,
@@ -53,7 +53,7 @@ three_yr = UsTreasuryBond(price=99.795799,
 
 # Five Year
 five_yr = UsTreasuryBond(price=99.511842,
-                coupon=4.000,
+                coupon_rate=4.000,
                 principal=100,
                 tenor='5Y',
                 purchase_date=purchase_date,
@@ -62,7 +62,7 @@ five_yr = UsTreasuryBond(price=99.511842,
 
 # Seven Year
 seven_yr = UsTreasuryBond(price=99.625524,
-                coupon=4.000,
+                coupon_rate=4.000,
                 principal=100,
                 tenor='7Y',
                 purchase_date=purchase_date,
@@ -70,7 +70,7 @@ seven_yr = UsTreasuryBond(price=99.625524,
 
 # Ten Year
 ten_yr = UsTreasuryBond(price=99.058658,
-                coupon=3.5000,
+                coupon_rate=3.5000,
                 principal=100,
                 tenor='10Y',
                 purchase_date=purchase_date,
@@ -78,7 +78,7 @@ ten_yr = UsTreasuryBond(price=99.058658,
 
 # Twenty Year
 twenty_yr = UsTreasuryBond(price=98.601167,
-                coupon=3.875,
+                coupon_rate=3.875,
                 principal=100,
                 tenor='20Y',
                 purchase_date=purchase_date,
@@ -87,7 +87,7 @@ twenty_yr = UsTreasuryBond(price=98.601167,
 
 # Thirty Year
 thirty_yr = UsTreasuryBond(price=98.898317,
-                 coupon=3.625,
+                 coupon_rate=3.625,
                  principal=100,
                  tenor='30Y',
                  purchase_date=purchase_date,
@@ -150,13 +150,13 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
     equal to the fixed rate.
     """
 
-    FIXED_YIELD = 0.05
+    FIXED_YIELD = 0.05  # yield is 5%
 
     one_yr_price = 100 * math.exp(-FIXED_YIELD * DayCountCalculator.compute_accrual_length(purchase_date,
                                                                                            date(2024, 2, 28),
                                                                                            DayCountConvention.ACTUAL_OVER_ACTUAL))
     one_yr_zc = UsTreasuryBond(price=one_yr_price,
-                               coupon=0.00,
+                               coupon_rate=0.00,
                                principal=100,
                                tenor='1Y',
                                payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -167,7 +167,7 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
                                                                                            date(2025, 2, 28),
                                                                                            DayCountConvention.ACTUAL_OVER_ACTUAL))
     two_yr_zc = UsTreasuryBond(price=two_yr_price,
-                               coupon=0.00,
+                               coupon_rate=0.00,
                                principal=100,
                                tenor='2Y',
                                payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -178,7 +178,7 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
                                                                                              date(2026, 3, 2),
                                                                                              DayCountConvention.ACTUAL_OVER_ACTUAL))
     three_yr_zc = UsTreasuryBond(price=three_yr_price,
-                                 coupon=0.00,
+                                 coupon_rate=0.00,
                                  principal=100,
                                  tenor='3Y',
                                  payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -189,7 +189,7 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
                                                                                             date(2027, 3, 1),
                                                                                             DayCountConvention.ACTUAL_OVER_ACTUAL))
     four_yr_zc = UsTreasuryBond(price=four_yr_price,
-                                coupon=0.00,
+                                coupon_rate=0.00,
                                 principal=100,
                                 tenor='4Y',
                                 payment_frequency=PaymentFrequency.ZERO_COUPON,
@@ -200,7 +200,7 @@ def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() 
                                                                                             date(2028, 2, 28),
                                                                                             DayCountConvention.ACTUAL_OVER_ACTUAL))
     five_yr_zc = UsTreasuryBond(price=five_yr_price,
-                                coupon=0.00,
+                                coupon_rate=0.00,
                                 principal=100,
                                 tenor='5Y',
                                 payment_frequency=PaymentFrequency.ZERO_COUPON,

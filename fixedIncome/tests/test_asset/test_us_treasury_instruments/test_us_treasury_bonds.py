@@ -105,7 +105,7 @@ def test_accrued_interest_example() -> None:
     """
 
     book_answer = 15.711
-    PASS_THRESH = 0.005  # less than a half of a cent off, within rounding error
+    PASS_THRESH = 0.005  # less than a half of a cent off, i.e. within rounding error
 
     test_bond = UsTreasuryBond(price=10_000,  # testing accrued interest, price does not matter here.
                                coupon_rate=0.625,
@@ -123,9 +123,7 @@ def test_accrued_interest_is_nonnegative() -> None:
     """
     Checks that all accrued interest values are non-negative.
     """
-
     accrued_interests = [bond.accrued_interest for bond in long_term_bond_collection]
-
     assert all([accrued_interest >= 0.0 for accrued_interest in accrued_interests])
 
 

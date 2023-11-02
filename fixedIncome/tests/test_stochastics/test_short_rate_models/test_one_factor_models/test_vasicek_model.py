@@ -36,7 +36,7 @@ def test_model_evaluates_to_path_on_interpoalting_dates() -> None:
     PASS_THRESH = 1E-10
     date_range = pd.date_range(start=start_time, end=end_time, periods=len(vm.path)).to_pydatetime()
 
-    assert all(abs(float(vm(date_time_obj)) - vm.path[index]) < PASS_THRESH
+    assert all(abs(float(vm(date_time_obj)) - vm.path[0, index]) < PASS_THRESH
                for index, date_time_obj in enumerate(date_range))
 
 

@@ -117,7 +117,6 @@ class UsTreasuryBond(CashflowCollection):
 
     #--------------------------------------------------------------------------
     # Pricing utility functions
-    #TODO: fix this
     def calculate_accrued_interest(self, reference_date: Optional[date] = None) -> float:
         """
         Computes the amount of accrued interest between the last payment date
@@ -350,7 +349,15 @@ class UsTreasuryBond(CashflowCollection):
 
     def yield_to_maturity(self, reference_date: Optional[date] = None) -> float:
         """
+        Calculates the yield to maturity (YTM) of a us_treasury_instruments, which is defined as the
+        single rate for which discounting the us_treasury_instruments's cash flow gives the original price.
+        For example, consider a us_treasury_instruments with coupon rate C and Principal and which has three semi-annual payments.
 
+        Price = ((C / 2*100) * Principal) / (1 + YTM / 2*100)           # first coupon payment discounted
+              + (C / 2*100) * Principal) /(1 + YTM / 2*100)**2          # Second coupon payment discounted
+              + ((C / 2*100 + 1) * Principal) /(1 + YTM / 2*100)**3     # Third coupon payment and principal discounted
+
+        Returns a float which represents the yield to maturity.
         """
         if reference_date is None:
             reference_date = self.purchase_date
