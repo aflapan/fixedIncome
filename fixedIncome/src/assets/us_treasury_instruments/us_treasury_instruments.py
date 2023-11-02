@@ -372,6 +372,22 @@ class UsTreasuryBond(CashflowCollection):
 
         return float(solution['x'])
 
+    def duration(self) -> float:
+        """
+        Calculates the DV01 of the bond with respect to its yield to maturity.
+        """
+        ytm = self.yield_to_maturity()
+        bumped_up_pv = self.discount_cashflows_by_fixed_rate(ytm + ONE_BASIS_POINT/2)
+        bumped_down_py = self.discount_cashflows_by_fixed_rate(ytm - ONE_BASIS_POINT/2)
+        pv_deriv = (bumped_up_pv - bumped_down_py)/ONE_BASIS_POINT
+        return -pv_deriv / self.full_price
+
+    def convexity(self) -> float:
+        pass
+
+
+
+
 
 
 
