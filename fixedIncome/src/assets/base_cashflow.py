@@ -11,8 +11,7 @@ from collections.abc import Iterable, Set
 import bisect
 from enum import Enum
 from abc import abstractmethod
-from fixedIncome.src.curves.curve_enumerations import KnotValuePair
-from fixedIncome.src.curves.base_curve import DiscountCurve
+from fixedIncome.src.curves.base_curve import DiscountCurve, KnotValuePair
 
 @dataclass
 class Payment:

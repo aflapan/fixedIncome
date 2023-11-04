@@ -17,12 +17,11 @@ from typing import Callable, Optional, NamedTuple, Iterable
 from functools import partial
 
 
-from fixedIncome.src.curves.base_curve import Curve, DiscountCurve
+from fixedIncome.src.curves.base_curve import Curve, DiscountCurve, KnotValuePair
 from fixedIncome.src.curves.curve_enumerations import (InterpolationSpace,
                                                        InterpolationMethod,
                                                        CurveIndex,
-                                                       EndBehavior,
-                                                       KnotValuePair)
+                                                       EndBehavior)
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
 from fixedIncome.src.assets.base_cashflow import CashflowCollection

@@ -12,9 +12,9 @@ from typing import Optional
 from collections.abc import Callable
 import pandas as pd
 
+SECONDS_PER_DAY = 24 * 60 * 60  # hours * minutes * seconds
 def time_fraction_in_days(time_delta: timedelta) -> float:
     """ Converts a timedelta object to a float representing a portion of days. """
-    SECONDS_PER_DAY = 24 * 60 * 60  # hours * minutes * seconds
     total_seconds = time_delta.total_seconds()
     return total_seconds / SECONDS_PER_DAY
 

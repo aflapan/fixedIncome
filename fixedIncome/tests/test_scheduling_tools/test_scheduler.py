@@ -80,9 +80,9 @@ def test_generate_business_days_across_weekend() -> None:
         date(2023, 10, 23), date(2023, 10, 24), date(2023, 10, 25), date(2023, 10, 26), date(2023, 10, 27)
      ]
 
-    test_results = Scheduler.generate_us_business_days(start_date=date(2023, 10, 15),
-                                                       end_date=date(2023, 10, 29),
-                                                       holiday_calendar=US_FEDERAL_HOLIDAYS)
+    test_results = Scheduler.generate_business_days(start_date=date(2023, 10, 15),
+                                                    end_date=date(2023, 10, 29),
+                                                    holiday_calendar=US_FEDERAL_HOLIDAYS)
     assert test_results == expected_result
 
 def test_generate_date_by_increments() -> None:

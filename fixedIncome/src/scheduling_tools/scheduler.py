@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import pandas as pd  # type: ignore
 from fixedIncome.src.scheduling_tools.schedule_enumerations import Weekdays
-
+from fixedIncome.src.scheduling_tools.schedule_enumerations import SettlementConvention
 from fixedIncome.src.scheduling_tools.holidays import (generate_all_holidays,
                                                        Holiday,
                                                        get_next_weekday)
@@ -108,7 +108,7 @@ class Scheduler(object):
         return not_holiday and is_weekday
 
     @staticmethod
-    def generate_us_business_days(start_date: date, end_date: date, holiday_calendar: dict) -> list[date]:
+    def generate_business_days(start_date: date, end_date: date, holiday_calendar: dict) -> list[date]:
         """
         Generates a list of all us business days which lie (inclusively) between
         the provided from_date and to_date.
@@ -196,5 +196,38 @@ class Scheduler(object):
         test_date = increment + base_date
 
         return test_date >= base_date
+
+    @staticmethod
+    def calculate_settlement_date(
+            purchase_date: date,
+            settlement_convention: SettlementConvention,
+            holiday_calendar: dict[str, Holiday]) -> date:
+        """
+        Method to compute the settlement date based on the purchase date and the settlement_convention.
+        """
+
+        match settlement_convention:
+            case SettlementConvention.T_PLUS_ZERO_BUSINESS:
+                return Scheduler.add_business_days(purchase_date,
+                                                   business_days=0,
+                                                   holiday_calendar=holiday_calendar)
+
+            case SettlementConvention.T_PLUS_ONE_BUSINESS:
+                return Scheduler.add_business_days(purchase_date,
+                                                   business_days=1,
+                                                   holiday_calendar=holiday_calendar)
+
+            case SettlementConvention.T_PLUS_TWO_BUSINESS:
+                return Scheduler.add_business_days(purchase_date,
+                                                   business_days=2,
+                                                   holiday_calendar=holiday_calendar)
+
+            case SettlementConvention.T_PLUS_THREE_BUSINESS:
+                return Scheduler.add_business_days(purchase_date,
+                                                   business_days=3,
+                                                   holiday_calendar=holiday_calendar)
+
+            case _:
+                raise ValueError(f"Settlement Convention {settlement_convention} is invalid.")
 
 

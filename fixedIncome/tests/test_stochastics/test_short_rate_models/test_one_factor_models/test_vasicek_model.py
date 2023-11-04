@@ -28,7 +28,7 @@ def test_long_term_mean() -> None:
     assert abs(sample_mean - 0.04) < PASS_THRESH
 
 
-def test_model_evaluates_to_path_on_interpoalting_dates() -> None:
+def test_model_evaluates_to_path_on_interpolating_dates() -> None:
     """
     Tests the callable feature of the model correctly gives the path values
     when the datetime object used as an argument is an interpolation date.

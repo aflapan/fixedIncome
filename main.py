@@ -83,7 +83,7 @@ def main(bond_collection, curve_factory) -> None:
     #yield_curve.plot_price_curve(thirty_yr)
 
 
-    dates = Scheduler.generate_us_business_days(purchase_date, date(2024, 8, 27), dict())
+    dates = Scheduler.generate_business_days(purchase_date, date(2024, 8, 27), dict())
     ytms = [two_yr.yield_to_maturity(date_obj)*100 for date_obj in dates]
     plt.figure(figsize=(10, 6))
     plt.plot(dates, ytms)

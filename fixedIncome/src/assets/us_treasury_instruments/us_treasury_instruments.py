@@ -1,3 +1,7 @@
+"""
+
+"""
+
 from datetime import date, timedelta  # type: ignore
 from dateutil.relativedelta import relativedelta  # type: ignore
 import numpy as np  # type: ignore
@@ -14,11 +18,11 @@ from fixedIncome.src.scheduling_tools.schedule_enumerations import (PaymentFrequ
                                                                     BusinessDayAdjustment,
                                                                     DayCountConvention,
                                                                     SettlementConvention,
-                                                                    ImmMonths)
+                                                                    ImmMonths,
+                                                                    Months)
 
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.curves.curve_enumerations import KnotValuePair
-from fixedIncome.src.curves.base_curve import DiscountCurve
+from fixedIncome.src.curves.base_curve import DiscountCurve, KnotValuePair
 from fixedIncome.src.assets.base_cashflow import CashflowCollection, CashflowKeys, Cashflow, Payment
 
 ONE_BASIS_POINT = 0.0001
@@ -68,7 +72,9 @@ class UsTreasuryBond(CashflowCollection):
         super().__init__([coupon_cashflow, principal_repayment_cashflow],
                          [CashflowKeys.COUPON_PAYMENTS, CashflowKeys.SINGLE_PAYMENT])
 
-        self.settlement_date = self.calculate_settlement_date()
+        self.settlement_date = Scheduler.calculate_settlement_date(purchase_date=self.purchase_date,
+                                                                   settlement_convention=self.settlement_convention,
+                                                                   holiday_calendar=self.holiday_calendar)
 
         self.accrued_interest = self.calculate_accrued_interest()
         self.full_price = self.get_full_price()
@@ -127,7 +133,9 @@ class UsTreasuryBond(CashflowCollection):
         if self.payment_frequency == PaymentFrequency.ZERO_COUPON:
             return 0.0
 
-        settlement_date = self.settlement_date if reference_date is None else self.calculate_settlement_date(reference_date)
+        settlement_date = self.settlement_date if reference_date is None else Scheduler.calculate_settlement_date(purchase_date=reference_date,
+                                                                                                                  settlement_convention=self.settlement_convention,
+                                                                                                                  holiday_calendar=self.holiday_calendar)
         if self.settlement_date < self.dated_date:
             raise ValueError(f'Settlement date {self.settlement_date} is before the dated date {self.dated_date}'
                              f' for us_treasury_instruments\n{self}.')
@@ -285,35 +293,6 @@ class UsTreasuryBond(CashflowCollection):
         coupon_payments.sort(key=lambda payment: payment.payment_date)  # Sort by payment date
         return Cashflow(coupon_payments)
 
-    def calculate_settlement_date(self, reference_date: Optional[date] = None) -> date:
-        """
-        Method to compute the settlement date based on the purchase date and the settlement_convention.
-        """
-
-        purchase_date = reference_date if reference_date is not None else self.purchase_date
-        match self.settlement_convention:
-            case SettlementConvention.T_PLUS_ZERO_BUSINESS:
-                return Scheduler.add_business_days(purchase_date,
-                                                   business_days=0,
-                                                   holiday_calendar=self.holiday_calendar)
-
-            case SettlementConvention.T_PLUS_ONE_BUSINESS:
-                return Scheduler.add_business_days(purchase_date,
-                                                   business_days=1,
-                                                   holiday_calendar=self.holiday_calendar)
-
-            case SettlementConvention.T_PLUS_TWO_BUSINESS:
-                return Scheduler.add_business_days(purchase_date,
-                                                   business_days=2,
-                                                   holiday_calendar=self.holiday_calendar)
-
-            case SettlementConvention.T_PLUS_THREE_BUSINESS:
-                return Scheduler.add_business_days(purchase_date,
-                                                   business_days=3,
-                                                   holiday_calendar=self.holiday_calendar)
-
-            case _:
-                raise ValueError(f"Settlement Convention {self.settlement_convention} is invalid.")
 
     #------------------------------------------------------
     # Yield to Maturity calculations
@@ -383,34 +362,52 @@ class UsTreasuryBond(CashflowCollection):
         return -pv_deriv / self.full_price
 
     def convexity(self) -> float:
-        pass
-
-
-
-
-
-
+        """
+        Calculates the Convexity of the bond with respect to
+        """
 
 
 class UsTreasuryFuture(CashflowCollection):
     def __init__(self,
+                 deliverables_basket: dict[str, UsTreasuryBond],
+                 conversion_factors: dict[str, float],
                  tenor: str,
-                 deliverables_basket: set[UsTreasuryBond],
+                 maturity_date: date,
+                 delivery_month: ImmMonths | Months,
                  purchase_date: date,
-                 maturity_month: ImmMonths,
+                 holiday_calendar: dict[str, Holiday],
+                 notional_coupon_rate: float = 6.0,  # the notional coupon rate, in percentage points (%)
                  cusip: Optional[str] = None,
                  principal: int = 100_000,
                  settlement_convention: SettlementConvention = SettlementConvention.T_PLUS_ONE_BUSINESS) -> None:
 
-        settlement_date = None
-        business_days = Scheduler.generate_business_days(from_date=settlement_date,
-                                                         to_date=None,
-                                                         Holidays=US_FEDERAL_HOLIDAYS)
+        self._purchase_date = purchase_date
+        self.tenor = tenor
+        self.maturity_date = maturity_date
+        self.settlement_convention = settlement_convention
+        self.holiday_calendar = holiday_calendar
+        self.settlement_date = Scheduler.calculate_settlement_date(purchase_date=self.purchase_date,
+                                                                   settlement_convention=self.settlement_convention,
+                                                                   holiday_calendar=self.holiday_calendar)
+
+        business_days = Scheduler.generate_business_days(start_date=self.settlement_date,
+                                                         end_date=self.maturity_date,
+                                                         holiday_calendar=US_FEDERAL_HOLIDAYS)
 
         mark_to_market_cashflow = Cashflow([Payment(payment_date=business_day, payment=None)
                                             for business_day in business_days])
 
         super().__init__((mark_to_market_cashflow,), (CashflowKeys.MARK_TO_MARKET,))
+
+    @property
+    def purchase_date(self) -> date:
+        return self._purchase_date
+
+    def calculate_cost_to_deliver(self, bond: UsTreasuryBond, delivery_date: date) -> float:
+        """
+        """
+
+
 
 
 

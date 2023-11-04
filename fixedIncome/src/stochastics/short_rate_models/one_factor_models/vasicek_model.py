@@ -36,7 +36,7 @@ class VasicekModel(ShortRateModel):
     A class for generating sample paths of the Vasicek short rate model.
     """
 
-    def __init__(self, long_term_mean, reversion_scale, volatility, start_date_time, end_date_time) -> None:
+    def __init__(self, long_term_mean, reversion_scale, volatility, start_date_time, end_date_time, dt: float = 1/100) -> None:
         self.start_date_time = start_date_time
         self.end_date_time = end_date_time
         self.long_term_mean = long_term_mean
@@ -52,7 +52,8 @@ class VasicekModel(ShortRateModel):
         self.keys = ('short_rate',)
 
         super().__init__(drift_diffusion_collection={self.keys[0]: self.drift_diffusion_pair},
-                         brownian_motion=bm)  # inherits __call__ from ShortRate class
+                         brownian_motion=bm,
+                         dt=dt)  # inherits __call__ from ShortRate class
 
     def show_drift_diffusion_collection_keys(self) -> tuple[str]:
         """
@@ -61,20 +62,20 @@ class VasicekModel(ShortRateModel):
         return self.keys
 
     def generate_path(
-            self, dt: float, starting_value: np.ndarray | float, set_path: bool = True, seed: Optional[int] = None
+            self, starting_value: np.ndarray | float, set_path: bool = True, seed: Optional[int] = None
     ) -> np.ndarray:
         """ Generates the Vasicek solution path through the Euler Discretization method. """
         drift_fxcn, diffusion_fxcn = self.drift_diffusion_pair
-        brownian_increments = self.brownian_motion.generate_increments(dt=dt, seed=seed).flatten()
+        brownian_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed).flatten()
         solution = np.empty((1,  len(brownian_increments)+1))
         current_val = float(starting_value)
         time = 0
         for index, shock in enumerate(brownian_increments):
             solution[0, index] = current_val
-            drift_increment = drift_fxcn(time, current_val) * dt
+            drift_increment = drift_fxcn(time, current_val) * self.dt
             diffusion_shock = diffusion_fxcn(time, current_val) * shock  # shock contains sqrt(dt) scaling
             current_val = current_val + drift_increment + diffusion_shock
-            time += dt
+            time += self.dt
 
         solution[0, len(brownian_increments)] = current_val  # solution has one more slot
         if set_path:
@@ -116,6 +117,6 @@ if __name__ == '__main__':
                       start_date_time=start_time,
                       end_date_time=end_time)
 
-    path = vm.generate_path(dt=1/100, starting_value=0.08, set_path=True, seed=1)
+    path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
     vm.plot()
 

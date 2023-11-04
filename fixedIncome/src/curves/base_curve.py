@@ -6,12 +6,18 @@ from dates to floats on the interpolation x axis.
 Each subclass will provide additional functionality.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Iterable, Optional
 from collections.abc import Callable
 import scipy
+from typing import NamedTuple
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
-from fixedIncome.src.curves.curve_enumerations import KnotValuePair, CurveIndex, EndBehavior, InterpolationMethod
+from fixedIncome.src.curves.curve_enumerations import CurveIndex, EndBehavior, InterpolationMethod
+
+
+class KnotValuePair(NamedTuple):
+    knot: date | datetime
+    value: float
 
 
 class Curve(Callable):

@@ -3,25 +3,24 @@ from datetime import date
 import pandas as pd
 from typing import Optional
 
-US_INDICES = {'SOFR', 'LIBOR-3M', 'FEDERAL FUNDS'}
+from fixedIncome.src.scheduling_tools.holidays import Holiday
+from fixedIncome.src.scheduling_tools.schedule_enumerations import BusinessDayAdjustment, SettlementConvention
 
 class InterestRateSwap:
     def __init__(self,
-                 index: str,
+                 float_index: ,
                  quote: float,
                  maturity_date: date,
                  purchase_date: date,
                  day_count_convention: str,
-                 settlement_convention: str,
-                 business_day_calendar: str,
-                 business_day_adjustment: str = 'modified following') -> None:
-        self.index = index
+                 holiday_calendar: dict[str, Holiday],
+                 settlement_convention: SettlementConvention = SettlementConvention.T_PLUS_TWO_BUSINESS,
+                 business_day_adjustment: BusinessDayAdjustment = BusinessDayAdjustment.MODIFIED_FOLLOWING) -> None:
+        self.float_index = float_index
         self.quote = quote
         self.maturity_date = maturity_date
         self.purchase_date = purchase_date
         self.day_count_convention = day_count_convention
-        self._floating_leg: Optional[pd.DataFrame] = None
-        self._fixed_leg: Optional[pd.DataFrame] = None
         self.implied_quote = None
 
 

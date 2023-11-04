@@ -37,7 +37,3 @@ class EndBehavior(Enum):
     ERROR = 0
     CONSTANT = 1
 
-
-class KnotValuePair(NamedTuple):
-    knot: date
-    value: float
