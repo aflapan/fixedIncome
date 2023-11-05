@@ -11,12 +11,8 @@ import numpy as np
 from typing import Optional
 from collections.abc import Callable
 import pandas as pd
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
-SECONDS_PER_DAY = 24 * 60 * 60  # hours * minutes * seconds
-def time_fraction_in_days(time_delta: timedelta) -> float:
-    """ Converts a timedelta object to a float representing a portion of days. """
-    total_seconds = time_delta.total_seconds()
-    return total_seconds / SECONDS_PER_DAY
 
 def datetime_to_path_call(
         datetime_obj: datetime, start_date_time: datetime, end_date_time: datetime, path: Optional[np.ndarray] = None
@@ -37,10 +33,10 @@ def datetime_to_path_call(
 
     num_steps = path.shape[1] if len(path.shape) >= 2 else len(path)
     time_diff = end_date_time - start_date_time
-    time_spread = time_fraction_in_days(time_diff)
+    time_spread = DayCountCalculator.time_fraction_in_years(time_diff)
     time_since_start = (datetime_obj - start_date_time)
 
-    interpolation_float = (num_steps - 1) * time_fraction_in_days(time_since_start) / time_spread
+    interpolation_float = (num_steps - 1) * DayCountCalculator.time_fraction_in_years(time_since_start) / time_spread
     interpolated_lower_index = math.floor(interpolation_float)
     interpolated_upper_index = math.ceil(interpolation_float)
 
@@ -132,8 +128,8 @@ class BrownianMotion(Callable):
     def generate_num_steps_from_dt(self, dt: float) -> int:
         """ """
         time_diff = self.end_date_time - self.start_date_time
-        time_diff_in_days = math.ceil(time_fraction_in_days(time_diff))
-        num_steps = math.ceil(time_diff_in_days / dt)
+        time_diff_in_years = math.ceil(DayCountCalculator.time_fraction_in_years(time_diff))
+        num_steps = math.ceil(time_diff_in_years / dt)
         return num_steps
 
     def plot(self):
@@ -155,7 +151,7 @@ if __name__ == '__main__':
     correlation_matrix = np.array([[1.0, rho, rho], [rho, 1.0, rho], [rho, rho, 1.0]])
 
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2023, 10, 16, 0, 0, 0, 0)
+    end_time = datetime(2024, 10, 15, 0, 0, 0, 0)
 
     bm = BrownianMotion(start_date_time=start_time,
                         end_date_time=end_time,

@@ -6,6 +6,7 @@ Unit tests are contained in
 fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models.test_vasicek_model.py
 """
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -36,7 +37,13 @@ class VasicekModel(ShortRateModel):
     A class for generating sample paths of the Vasicek short rate model.
     """
 
-    def __init__(self, long_term_mean, reversion_scale, volatility, start_date_time, end_date_time, dt: float = 1/100) -> None:
+    def __init__(self,
+                 long_term_mean,
+                 reversion_scale,
+                 volatility,
+                 start_date_time,
+                 end_date_time,
+                 dt: float = 1/1_000) -> None:
         self.start_date_time = start_date_time
         self.end_date_time = end_date_time
         self.long_term_mean = long_term_mean
@@ -108,8 +115,12 @@ class VasicekModel(ShortRateModel):
 
 
 if __name__ == '__main__':
+
+    from datetime import timedelta
+    from fixedIncome.src.scheduling_tools.scheduler import Scheduler
+
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2023, 11, 15, 0, 0, 0, 0)
+    end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
 
     vm = VasicekModel(long_term_mean=0.04,
                       reversion_scale=2.0,
@@ -119,4 +130,19 @@ if __name__ == '__main__':
 
     path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
     vm.plot()
+
+    vm_df_curve = vm.discount_curve()
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=vm_df_curve.interpolation_values[-1].knot,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    discount_factors = [vm_df_curve(date_obj) for date_obj in dates]
+    plt.figure(figsize=(13, 5))
+    plt.plot(dates, discount_factors)
+    plt.grid(alpha=0.25)
+    plt.title(f'Discount Curve from Continuously-Compounding the Vasicek Model Short Rate with Model Parameters\n'
+              f'Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Factor {vm.reversion_scale}')
+    plt.ylabel('Discount Factor')
+    plt.show()
 

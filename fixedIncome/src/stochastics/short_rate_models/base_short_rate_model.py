@@ -1,10 +1,12 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time
+from dateutil.relativedelta import relativedelta
 import numpy as np
 import math
 from typing import NamedTuple, Optional
 from collections.abc import Callable
 from abc import abstractmethod
 import itertools
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 from fixedIncome.src.stochastics.brownian_motion import datetime_to_path_call, BrownianMotion
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
@@ -21,10 +23,11 @@ class ShortRateModel:
     def __init__(self,
                  drift_diffusion_collection: dict[str, DriftDiffusionPair],
                  brownian_motion: BrownianMotion,
-                 dt: float = 1/100  # dt increment in units of days
+                 dt: float = 1/1_000  # dt increment in units of years
                  ) -> None:
         self.drift_diffusion_collection = drift_diffusion_collection
         self.brownian_motion = brownian_motion
+        self._discount_factor_snap_time: time = time(17, 0, 0, 0)  # 5 PM Snap time
         self._path = None
         self._dt = dt
         self._rate_index = 0  # row index of the self.path numpy array which corresponds to the short rate
@@ -94,8 +97,10 @@ class ShortRateModel:
 
         datetimes = Scheduler.generate_dates_by_increments(start_date=start_date_time,
                                                            end_date=end_date_time,
-                                                           increment=timedelta(days=self.dt))
-        trapezoid_accumulation = [0.0]
+                                                           increment=relativedelta(seconds=self.dt * DayCountCalculator.SECONDS_PER_YEAR),
+                                                           max_dates=1_000_000)
+        running_integral = 0.0
+        interpolation_values = [KnotValuePair(start_date_time, 1.0)]
         for start_dt, end_dt in itertools.pairwise(datetimes):
             start_rate, end_rate = self(start_dt)[self.rate_index], self(end_dt)[self.rate_index]
             min_rate, max_rate = min(start_rate, end_rate), max(start_rate, end_rate)
@@ -104,13 +109,10 @@ class ShortRateModel:
                 next_trapezoid_val = max_rate * self.dt + (min_rate - max_rate) * self.dt / 2
             else:
                 next_trapezoid_val = min_rate * self.dt + (max_rate - min_rate) * self.dt / 2
-
             # compute integral
-            trapezoid_accumulation.append(trapezoid_accumulation[-1] + next_trapezoid_val)
+            running_integral += next_trapezoid_val
+            interpolation_values.append(KnotValuePair(end_dt, math.exp(-running_integral)))
 
-        continuously_compounded_dfs = [math.exp(-integral_value) for integral_value in trapezoid_accumulation]
-        interpolation_values = [KnotValuePair(datetime_obj, disc_factor) for datetime_obj, disc_factor in
-                                         zip(datetimes, trapezoid_accumulation)]
         if self._discount_curve is None:
             self._discount_curve = DiscountCurve(interpolation_values=interpolation_values,
                                                  interpolation_method=InterpolationMethod.LINEAR,
@@ -121,6 +123,8 @@ class ShortRateModel:
                                                  right_end_behavior=EndBehavior.ERROR)
         else:
             self._discount_curve.reset_interpolation_values(interpolation_values)
+
+        return self._discount_curve
 
 
 

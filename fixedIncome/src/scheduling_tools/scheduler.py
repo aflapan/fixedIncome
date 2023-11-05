@@ -4,7 +4,6 @@ An object for
 Unit tests are contained in fixedIncome.tests.test_scheduling_tools.test_scheduler.py
 """
 
-
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import pandas as pd  # type: ignore
