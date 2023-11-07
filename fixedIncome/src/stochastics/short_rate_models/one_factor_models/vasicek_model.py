@@ -6,7 +6,6 @@ Unit tests are contained in
 fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models.test_vasicek_model.py
 """
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -98,7 +97,7 @@ class VasicekModel(ShortRateModel):
         return self.volatility**2 / (2 * self.reversion_scale)
 
 
-    def plot(self) -> None:
+    def plot(self, show_fig: bool = False) -> None:
         """ Produces a plot of  """
 
         title_str = f'Vasicek Model Sample Path with Parameters\n' \
@@ -111,11 +110,11 @@ class VasicekModel(ShortRateModel):
         plt.ylabel('Short Rate (%)')
         plt.grid(alpha=0.25)
         plt.legend(['Sample Short Rate Path', 'Long-Term Mean'], frameon=False)
-        plt.show()
+        if show_fig:
+            plt.show()
 
 
 if __name__ == '__main__':
-
     from datetime import timedelta
     from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 
@@ -130,19 +129,29 @@ if __name__ == '__main__':
 
     path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
     vm.plot()
+    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
+    plt.show()
 
-    vm_df_curve = vm.discount_curve()
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=vm_df_curve.interpolation_values[-1].knot,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
-
-    discount_factors = [vm_df_curve(date_obj) for date_obj in dates]
+    NUM_CURVES = 1_000
     plt.figure(figsize=(13, 5))
-    plt.plot(dates, discount_factors)
+    for seed in range(NUM_CURVES):
+        vm.generate_path(starting_value=0.08, set_path=True, seed=seed)
+        vm_df_curve = vm.discount_curve()
+
+        dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                       end_date=vm_df_curve.interpolation_values[-1].knot,
+                                                       increment=timedelta(1),
+                                                       max_dates=1_000_000)
+
+        discount_factors = [vm_df_curve(date_obj) for date_obj in dates]
+        plt.plot(dates, discount_factors, color='tab:blue', alpha=0.01, linewidth=0.5)
+        print(seed)
+
+
     plt.grid(alpha=0.25)
-    plt.title(f'Discount Curve from Continuously-Compounding the Vasicek Model Short Rate with Model Parameters\n'
+    plt.title(f'Discount Curves from Continuously-Compounding the Vasicek Model Short Rate with Model Parameters\n'
               f'Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Factor {vm.reversion_scale}')
     plt.ylabel('Discount Factor')
+    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Discount_Curves.png')
     plt.show()
 
