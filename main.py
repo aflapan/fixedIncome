@@ -64,7 +64,7 @@ def main(bond_collection, curve_factory) -> None:
     kr_collection = KeyRateCollection(key_rate_list)
     #yield_curve.plot(adjustment=kr_collection)
 
-    print('Solving for first-order neutrality...')
+
     bond_a_portfolio = PortfolioEntry(2.0, bond_a)
     bond_b_portfolio = PortfolioEntry(1.0, bond_b)
     long_short_bond_portfolio = Portfolio((bond_a_portfolio, bond_b_portfolio))
@@ -74,6 +74,8 @@ def main(bond_collection, curve_factory) -> None:
     risk_ladder = yield_curve.calculate_pv01_risk_ladder(long_short_bond_portfolio, kr_collection)
     print("Risk ladder is...")
     print(risk_ladder)
+
+    tail_risk = yield_curve.calculate_pv01_risk(long_short_bond_portfolio.assets[1].asset, kr_collection[-1])
 
 
 if __name__ == '__main__':
@@ -178,14 +180,14 @@ if __name__ == '__main__':
 
     bond_a = UsTreasuryBond(price=96.73164773103913,
                                 coupon_rate=5,
-                                principal=100,
+                                principal=100_000,
                                 tenor='4Y',
                                 purchase_date=purchase_date,
                                 maturity_date=date(2027, 2, 15))
 
     bond_b = UsTreasuryBond(price=89.6613284260062,
                                 coupon_rate=3,
-                                principal=100,
+                                principal=100_000,
                                 tenor='20Y',
                                 purchase_date=purchase_date,
                                 maturity_date=date(2043, 2, 15))

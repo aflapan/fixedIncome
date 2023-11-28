@@ -73,10 +73,3 @@ class RiskLadder(Collection[Risk]):
         """ Returns a list of the Curve Indices in the Risk Ladder. """
         return [risk.index for risk in self]
 
-
-
-
-
-
-
-

@@ -63,17 +63,17 @@ def get_next_weekday(date_obj: date, weekday: Weekdays) -> date:
 
 
 US_FEDERAL_HOLIDAYS = {
-            'NewYears':     Holiday(Months.JANUARY, 1, us_federal_holiday_adjustment),     # Jan 1st
-            'MLK':          Holiday(Months.JANUARY, 17, us_federal_holiday_adjustment),    # Jan 17th
-            'Presidents':   Holiday(Months.FEBRUARY, 21, us_federal_holiday_adjustment),   # Feb 21st
-            'Memorial':     Holiday(Months.MAY, 30, us_federal_holiday_adjustment),                         # May 30th
-            'Juneteenth':   Holiday(Months.JUNE, 19, us_federal_holiday_adjustment),                       # June 19th
-            'Independence': Holiday(Months.JULY, 4, us_federal_holiday_adjustment),                      # July 4th
-            'Labor':        Holiday(Months.SEPTEMBER, 1, lambda date_obj: get_next_weekday(date_obj, Weekdays.MONDAY)),  # first Monday in Sept
-            'Columbus':     Holiday(Months.OCTOBER, 8, lambda date_obj: get_next_weekday(date_obj, Weekdays.MONDAY)),  # second Monday in Oct
-            'Veterans':     Holiday(Months.NOVEMBER, 11, us_federal_holiday_adjustment),    # Nov 11th
+            'NewYears':     Holiday(Months.JANUARY, 1, us_federal_holiday_adjustment),                                     # Jan 1st
+            'MLK':          Holiday(Months.JANUARY, 17, us_federal_holiday_adjustment),                                    # Jan 17th
+            'Presidents':   Holiday(Months.FEBRUARY, 15, lambda date_obj: get_next_weekday(date_obj, Weekdays.MONDAY)),    # Third Monday of February
+            'Memorial':     Holiday(Months.MAY, 30, us_federal_holiday_adjustment),                                        # May 30th
+            'Juneteenth':   Holiday(Months.JUNE, 19, us_federal_holiday_adjustment),                                       # June 19th
+            'Independence': Holiday(Months.JULY, 4, us_federal_holiday_adjustment),                                        # July 4th
+            'Labor':        Holiday(Months.SEPTEMBER, 1, lambda date_obj: get_next_weekday(date_obj, Weekdays.MONDAY)),    # first Monday in Sept
+            'Columbus':     Holiday(Months.OCTOBER, 8, lambda date_obj: get_next_weekday(date_obj, Weekdays.MONDAY)),      # second Monday in Oct
+            'Veterans':     Holiday(Months.NOVEMBER, 11, us_federal_holiday_adjustment),                                   # Nov 11th
             'Thanksgiving': Holiday(Months.NOVEMBER, 22, lambda date_obj: get_next_weekday(date_obj, Weekdays.THURSDAY)),  # fourth Thursday of Nov
-            'Christmas':    Holiday(Months.DECEMBER, 25, us_federal_holiday_adjustment)     # Dec 25th
+            'Christmas':    Holiday(Months.DECEMBER, 25, us_federal_holiday_adjustment)                                    # Dec 25th
         }
 
 

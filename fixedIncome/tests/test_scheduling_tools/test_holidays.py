@@ -37,7 +37,7 @@ def test_all_holidays_are_correctly_adjusted_for_2023_us_federal_holidays() -> N
     test_dates = {
         date(2023, 1, 2),    # adjust New Year's
         date(2023, 1, 17),   # MLK day
-        date(2023, 2, 21),   # President's Day
+        date(2023, 2, 20),   # President's Day
         date(2023, 5, 30),   # Memorial Day
         date(2023, 6, 19),   # Juneteenth
         date(2023, 7, 4),    # Fourth of July / Independence Day
@@ -68,3 +68,12 @@ def test_get_next_Saturday() -> None:
     start_date = date(2023, 10, 28)  # a Saturday
     assert get_next_weekday(start_date, Weekdays.SATURDAY) == start_date
 
+def test_presidents_day_2043() -> None:
+    """
+    Tests that President's day is correctly generated for the year 2043.
+    This year the date falls on the 16th, which is a very early date.
+    """
+    test_answer = date(2043, 2, 16)
+    generated_dates = generate_all_holidays(from_year=2043, to_year=2043, holiday_calendar=US_FEDERAL_HOLIDAYS)
+    generated_answer = [date_obj for date_obj in generated_dates if date_obj.month == 2][0]
+    assert generated_answer == test_answer
