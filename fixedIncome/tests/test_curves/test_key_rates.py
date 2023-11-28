@@ -6,12 +6,11 @@ found in fixedIncome.src.curves.key_rates.py
 from datetime import date
 from random import shuffle
 from copy import deepcopy
-import datetime
 
 import pandas as pd  # type: ignore
 import pytest
 
-from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.risk.key_rate import KeyRate, KeyRateCollection
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
 
 #----------------------------------------------------------------------

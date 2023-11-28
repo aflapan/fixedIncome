@@ -8,7 +8,7 @@ from fixedIncome.src.scheduling_tools.schedule_enumerations import BusinessDayAd
 
 class InterestRateSwap:
     def __init__(self,
-                 float_index: ,
+                 float_index,
                  quote: float,
                  maturity_date: date,
                  purchase_date: date,
@@ -34,10 +34,7 @@ class InterestRateSwap:
         return self._fixed_leg
 
     def generate_floating_leg_cashflow_schedule(self) -> None:
-        columns = ['Leg', 'Payment Number', 'Accrual Start', 'Accrual End', 'Payment Date']
         pass
 
     def generate_fixed_leg_cashflow_schedule(self) -> None:
-
-
         pass

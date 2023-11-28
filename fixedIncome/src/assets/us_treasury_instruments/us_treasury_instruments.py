@@ -353,7 +353,9 @@ class UsTreasuryBond(CashflowCollection):
 
     def duration(self) -> float:
         """
-        Calculates the DV01 of the bond with respect to its yield to maturity.
+        Calculates the DV01 of the bond with respect to its yield to maturity,
+        defined to be:
+        Duration = -1/P * dP/d ytm
         """
         ytm = self.yield_to_maturity()
         bumped_up_pv = self.discount_cashflows_by_fixed_rate(ytm + ONE_BASIS_POINT/2)
@@ -363,8 +365,15 @@ class UsTreasuryBond(CashflowCollection):
 
     def convexity(self) -> float:
         """
-        Calculates the Convexity of the bond with respect to
+        calculate the convexity of a us_treasury_instruments, defined as C := 1/P * d^2 P/d^2y
+        Reference: Tuckman and Serrat, 4th ed. equation (4.14).
         """
+        derivative_positive_bump = self.calculate_pv_deriv(assets, offset=ONE_BASIS_POINT/2)
+        derivative_negative_bump = self.calculate_pv_deriv(assets, offset=-ONE_BASIS_POINT/2)
+        second_derivative = (derivative_positive_bump - derivative_negative_bump) / ONE_BASIS_POINT
+        present_value = self.present_value(assets)
+        return second_derivative / present_value
+
 
 
 class UsTreasuryFuture(CashflowCollection):
@@ -408,12 +417,32 @@ class UsTreasuryFuture(CashflowCollection):
         """
 
 
-
-
-
-
-
-
 #-------------------------------------------------------------------
 
 UsTreasuryInstrument: TypeAlias = UsTreasuryBond | UsTreasuryFuture
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
+    purchase_date = date(2023, 2, 27)
+
+    two_yr = UsTreasuryBond(price=99 + 9/32,
+                  coupon_rate=5.00,
+                  principal=100,
+                  tenor='2Y',
+                  purchase_date=purchase_date,
+                  maturity_date=date(2025, 2, 28))
+
+
+    dates = Scheduler.generate_business_days(purchase_date, date(2024, 8, 27), dict())
+    ytms = [two_yr.yield_to_maturity(date_obj)*100 for date_obj in dates]
+    plt.figure(figsize=(10, 6))
+    plt.plot(dates, ytms)
+    plt.grid(alpha=0.25)
+    plt.title(f'Yield to Maturity of a Two Year Treasury Bond as the Purchase Date Rolls Forward in Time\n'
+              f'Clean Price {two_yr.price:0.2f} and Maturity Date {two_yr.maturity_date}')
+    plt.xlabel('Purchase Date')
+    plt.ylabel('Yield to Maturity (%)')
+    plt.show()
+

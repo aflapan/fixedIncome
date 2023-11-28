@@ -1,17 +1,15 @@
 from datetime import date
-import matplotlib.pyplot as plt
+import scipy.optimize
 
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention, PaymentFrequency
 from fixedIncome.src.curves.curve_enumerations import InterpolationMethod
-from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
-from fixedIncome.src.scheduling_tools.scheduler import Scheduler
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import (ONE_BASIS_POINT,
-                                                                                    UsTreasuryBond)
-from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurve, YieldCurveFactory
+from fixedIncome.src.risk.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import (UsTreasuryBond)
+from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurveFactory
+from fixedIncome.src.portfolio.base_portfolio import Portfolio, PortfolioEntry
+
 
 def main(bond_collection, curve_factory) -> None:
-
     #---------------------------------------------------------------------
     # Yield Curve
 
@@ -63,50 +61,25 @@ def main(bond_collection, curve_factory) -> None:
     key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,
                      thirty_yr_kr]
 
-    #kr_collection = KeyRateCollection(key_rate_list)
+    kr_collection = KeyRateCollection(key_rate_list)
+    #yield_curve.plot(adjustment=kr_collection)
 
-    two_yr_kr.set_bump_val(0.0001)
-
-    yield_curve.plot(adjustment=two_yr_kr)
-
-
-    # DV01 and convexity calculations
-
-    #durations = [yield_curve.duration(bond) for bond in bond_collection]
-    #print("Duration values are...")
-    #print(durations)
-
-    #convexities = [yield_curve.convexity(bond) for bond in bond_collection]
-    #print("Convexity values are...")
-    #print(convexities)
-
-    #yield_curve.plot_price_curve(thirty_yr)
-
-
-    dates = Scheduler.generate_business_days(purchase_date, date(2024, 8, 27), dict())
-    ytms = [two_yr.yield_to_maturity(date_obj)*100 for date_obj in dates]
-    plt.figure(figsize=(10, 6))
-    plt.plot(dates, ytms)
-    plt.grid(alpha=0.25)
-    plt.title(f'Yield to Maturity of a Two Year Treasury Bond as the Purchase Date Rolls Forward in Time\n'
-              f'Clean Price {two_yr.price:0.2f} and Maturity Date {two_yr.maturity_date}')
-    plt.xlabel('Purchase Date')
-    plt.ylabel('Yield to Maturity (%)')
-    plt.show()
-
+    print('Solving for first-order neutrality...')
+    bond_a_portfolio = PortfolioEntry(2.0, bond_a)
+    bond_b_portfolio = PortfolioEntry(1.0, bond_b)
+    long_short_bond_portfolio = Portfolio((bond_a_portfolio, bond_b_portfolio))
 
     #----------------------------------------------------------------
-    # Key Rate DV01s
-
-    #dv01s = yield_curve.calculate_dv01s(ten_yr, kr_collection)
-    #print("Key rate DV01s...")
-    #print(dv01s)
-    #print(format(kr_collection))
-
+    # Key Rate Derivatives
+    risk_ladder = yield_curve.calculate_pv01_risk_ladder(long_short_bond_portfolio, kr_collection)
+    print("Risk ladder is...")
+    print(risk_ladder)
 
 
 if __name__ == '__main__':
+
     curve_factory_obj = YieldCurveFactory()
+    purchase_date = date(2023, 2, 27)
 
     # Construct Bond Objects from U.S. Treasury Bonds found on
     # https://www.treasurydirect.gov/auctions/announcements-data-results/
@@ -130,7 +103,7 @@ if __name__ == '__main__':
                    purchase_date=purchase_date,
                    maturity_date=date(2023, 5, 28))
 
-    six_month = UsTreasuryBond(price=97.20,
+    six_month = UsTreasuryBond(price=97+1/32,
                    coupon_rate=0.00,
                    principal=100,
                    tenor='6M',
@@ -138,7 +111,7 @@ if __name__ == '__main__':
                    purchase_date=purchase_date,
                    maturity_date=date(2023, 8, 28))
 
-    one_yr = UsTreasuryBond(price=94.724,
+    one_yr = UsTreasuryBond(price=94,
                   coupon_rate=0.00,
                   principal=100,
                   tenor='1Y',
@@ -147,7 +120,7 @@ if __name__ == '__main__':
                   maturity_date=date(2024, 2, 22))
 
     # Two Year
-    two_yr = UsTreasuryBond(price=99 + 9/32,
+    two_yr = UsTreasuryBond(price=96+27/32,
                   coupon_rate=5.00,
                   principal=100,
                   tenor='2Y',
@@ -155,7 +128,7 @@ if __name__ == '__main__':
                   maturity_date=date(2025, 2, 28))
 
     # Three Year
-    three_yr = UsTreasuryBond(price=99 + 3/32,
+    three_yr = UsTreasuryBond(price=94+15/32,
                     coupon_rate=4.625,
                     principal=100,
                     tenor='3Y',
@@ -163,7 +136,7 @@ if __name__ == '__main__':
                     maturity_date=date(2026, 2, 15))
 
     # Five Year
-    five_yr = UsTreasuryBond(price=99 + 4/32,
+    five_yr = UsTreasuryBond(price=91 + 17/32,
                    coupon_rate=4.625,
                    principal=100,
                    tenor='5Y',
@@ -171,7 +144,7 @@ if __name__ == '__main__':
                    maturity_date=date(2028, 2, 28))
 
     # Seven Year
-    seven_yr = UsTreasuryBond(price=98 + 9/32,
+    seven_yr = UsTreasuryBond(price=89+9/32,
                     coupon_rate=4.625,
                     principal=100,
                     tenor='7Y',
@@ -179,28 +152,44 @@ if __name__ == '__main__':
                     maturity_date=date(2030, 2, 28))
 
     # Ten Year
-    ten_yr = UsTreasuryBond(price=92 + 8/32,
-                  coupon_rate=3.875,
+    ten_yr = UsTreasuryBond(price=86+8/32,
+                  coupon_rate=4.5,
                   principal=100,
                   tenor='10Y',
                   purchase_date=purchase_date,
                   maturity_date=date(2033, 2, 15))
 
     # Twenty Year
-    twenty_yr = UsTreasuryBond(price=90.052,
-                     coupon_rate=4.375,
+    twenty_yr = UsTreasuryBond(price=87+17/32,
+                     coupon_rate=5.275,
                      principal=100,
                      tenor='20Y',
                      purchase_date=purchase_date,
                      maturity_date=date(2043, 2, 15))
 
     # Thirty Year
-    thirty_yr = UsTreasuryBond(price=86 + 9/32,
-                     coupon_rate=4.125,
+    thirty_yr = UsTreasuryBond(price=83 + 9/32,
+                     coupon_rate=5.125,
                      principal=100,
                      tenor='30Y',
                      purchase_date=purchase_date,
                      maturity_date=date(2053, 2, 15))
+
+
+    bond_a = UsTreasuryBond(price=96.73164773103913,
+                                coupon_rate=5,
+                                principal=100,
+                                tenor='4Y',
+                                purchase_date=purchase_date,
+                                maturity_date=date(2027, 2, 15))
+
+    bond_b = UsTreasuryBond(price=89.6613284260062,
+                                coupon_rate=3,
+                                principal=100,
+                                tenor='20Y',
+                                purchase_date=purchase_date,
+                                maturity_date=date(2043, 2, 15))
+
 
     bond_list = [
         four_wk,

@@ -7,7 +7,7 @@ Each subclass will provide additional functionality.
 """
 
 from datetime import date, datetime
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Protocol
 from collections.abc import Callable
 import scipy
 from typing import NamedTuple
@@ -169,4 +169,11 @@ class DiscountCurve(Curve):
         """
         return cashflow.present_value(self)
 
+
+class PresentValueable(Protocol):
+    """
+    A prototype for any class which contains a present value method given a discount curve.
+    """
+    def present_value(self, curve: DiscountCurve, *args, **kwargs) -> float:
+        ...
 

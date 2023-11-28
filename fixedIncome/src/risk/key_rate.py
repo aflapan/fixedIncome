@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import copy
-from collections.abc import MutableSequence, Callable, Collection
+from collections.abc import MutableSequence
 import operator
 import bisect
 from datetime import date
 from typing import Optional, Callable, Union, Iterable
-
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention, DayCountCalculator
-
-ONE_BASIS_POINT = 0.0001
+from fixedIncome.src.risk.risk_metrics import ONE_BASIS_POINT
 class KeyRate(Callable):
     """
     Instantiates a KeyRate object.
@@ -353,7 +350,6 @@ class KeyRateCollection(MutableSequence[KeyRate], Callable):
 
         self + new_key_rate_object
 
-
     def __len__(self):
         """ Returns the number of KeyRate objects in the collection. """
         return len(self.key_rates)
@@ -512,10 +508,4 @@ class KeyRateCollection(MutableSequence[KeyRate], Callable):
         for key_rate in self:
             key_rate.set_bump_val(new_bump_val)
         self._create_combined_adjustment_function()
-
-
-
-
-
-
 

@@ -5,7 +5,7 @@ Unit tests are contained in fixedIncome.tests.test_stochastics.test_brownian_mot
 """
 
 import matplotlib.pyplot as plt
-from datetime import datetime, date, timedelta
+from datetime import datetime
 import math
 import numpy as np
 from typing import Optional

@@ -13,7 +13,7 @@ from fixedIncome.src.curves.base_curve import (KnotValuePair,
                                                CurveIndex,
                                                DiscountCurve)
 
-from fixedIncome.src.curves.key_rate import KeyRate
+from fixedIncome.src.risk.key_rate import KeyRate
 
 
 PASS_THRESH = 1E-8

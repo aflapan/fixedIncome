@@ -23,15 +23,15 @@ class InterpolationSpace(Enum):
     CONTINUOUSLY_COMPOUNDED_YIELD_TO_MATURITY = 5
 
 class CurveIndex(Enum):
-    NONE = -1
-    US_TREASURY = 0
-    SOFR = 1
-    TERM_SOFR_1M = 2
-    TERM_SOFR_3M = 3
-    TERM_SOFR_6M = 4
-    TERM_SOFR_12M = 5
-    FED_FUND = 6
-    LIBOR_3M = 7
+    NONE = 'None'
+    US_TREASURY = 'US TREASURY YIELD'
+    SOFR = 'US SOFR'
+    TERM_SOFR_1M = 'TERM SOFR 1M'
+    TERM_SOFR_3M = 'TERM SOFR 3M'
+    TERM_SOFR_6M = 'TERM SOFR 6M'
+    TERM_SOFR_12M = 'TERM SOFR 12M'
+    FED_FUND = 'FEDERAL FUNDS'
+    LIBOR_3M = 'LIBOR 3M'
 
 class EndBehavior(Enum):
     ERROR = 0

@@ -9,7 +9,7 @@ from fixedIncome.src.curves.yield_curves.yield_curve import YieldCurveFactory
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention, PaymentFrequency
 from fixedIncome.src.curves.curve_enumerations import InterpolationMethod
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryBond
-from fixedIncome.src.curves.key_rate import KeyRate
+from fixedIncome.src.risk.key_rate import KeyRate
 
 # Create a series of test objects.
 purchase_date = date(2023, 2, 27)

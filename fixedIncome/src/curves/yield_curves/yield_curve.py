@@ -5,34 +5,25 @@ the YieldCurve object and the YieldCurveFactory object.
 from __future__ import annotations
 
 import bisect
-import os
-import urllib.request
 import numpy as np  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 import pandas as pd  # type: ignore
 import scipy  # type: ignore
 from datetime import date
-from enum import Enum
-from typing import Callable, Optional, NamedTuple, Iterable
+from typing import Callable, Optional, Iterable
 from functools import partial
 
 
-from fixedIncome.src.curves.base_curve import Curve, DiscountCurve, KnotValuePair
+from fixedIncome.src.curves.base_curve import Curve, DiscountCurve, KnotValuePair, PresentValueable
 from fixedIncome.src.curves.curve_enumerations import (InterpolationSpace,
                                                        InterpolationMethod,
                                                        CurveIndex,
                                                        EndBehavior)
 
-from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
-from fixedIncome.src.assets.base_cashflow import CashflowCollection
-from fixedIncome.src.curves.key_rate import KeyRate, KeyRateCollection
-from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryInstrument, ONE_BASIS_POINT
-
-
-class HedgeRatio(NamedTuple):
-    dv01: float
-    hedge_ratio: float
-    key_rate_date: date
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
+from fixedIncome.src.risk.key_rate import KeyRate, KeyRateCollection
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryInstrument
+from fixedIncome.src.risk.risk_metrics import ONE_BASIS_POINT, Risk, RiskLadder
 
 
 class YieldCurve(Curve):
@@ -68,7 +59,7 @@ class YieldCurve(Curve):
 
 
     # present value calculators
-    def present_value(self, instrument: CashflowCollection,
+    def present_value(self, instrument: PresentValueable,
                       adjustment_fxcn: Optional[Callable[[date], float]] = None) -> Optional[float]:
         """
         Wrapper function for the specific implementations of present value calculations.
@@ -135,85 +126,53 @@ class YieldCurve(Curve):
                 return NotImplemented('Only DISCOUNT_FACTOR and CONTINUOUSLY_COMPOUNDED_YIELD '
                                       'are implemented in to_discount_curve.')
 
-
-    #--------------------------------------------------------------
-    # functionality for bumping curves
-
-    def parallel_bump(self, bump_amount = ONE_BASIS_POINT) -> Callable[[date], float]:
+    def calculate_key_rate_deriv(self, assets: PresentValueable, key_rate: KeyRate) -> float:
         """
-        Returns an adjustment function corresponding to a parallel shift (i.e. a constant of bump_amount).
+        Calculates the hedge ratio of the assets with respect to a specified KeyRate,
+        which is defined to be:
+            (PV(plus key rate adjustment) - PV) / ONE BASIS POINT
         """
-        return lambda date_obj: bump_amount
+        key_rate.create_adjustment_function()  # creates the default adjustment function with 1 bp movement
+        key_rate.set_bump_val(-ONE_BASIS_POINT/2)
+        pv_with_negative_adjustment = self.present_value(assets, key_rate)
 
-    #----------------------------------------------------------------------
-    # Duration and convexity with respect to parallel shifts of yield curve
-    def calculate_pv_deriv(self, bond, offset: float = 0.0) -> float:
+        key_rate.create_adjustment_function()
+        key_rate.set_bump_val(ONE_BASIS_POINT / 2)
+        pv_with_positive_adjustment = self.present_value(assets, key_rate)
+
+        key_rate.create_adjustment_function()  # reset key rate bump value
+        key_rate_deriv = (pv_with_positive_adjustment - pv_with_negative_adjustment) / ONE_BASIS_POINT
+        return key_rate_deriv
+
+    def calculate_key_rate_convexity(self,
+                                     assets: PresentValueable,
+                                     key_rate_collection: KeyRateCollection) -> list[float]:
         """
-        Calculates the DV01 of the provided us_treasury_instruments under parallel shifts of the yield curve.
-        offset allows the user to specify a shift around which the derivative will be computed.
-
-        Formula is
-            deriv = (PV(offset+half basis point) - PV(offset-half basis Point))/(0.005 - -0.005)
         """
-        half_bp_adjustment = self.parallel_bump(bump_amount=offset + ONE_BASIS_POINT/2)
-        pv_plus_half_bp = self.present_value(bond, adjustment_fxcn=half_bp_adjustment)
-        negative_half_bp_adjustment = self.parallel_bump(bump_amount=offset - ONE_BASIS_POINT/2)
-        pv_minus_half_bp = self.present_value(bond, adjustment_fxcn=negative_half_bp_adjustment)
+        pass
 
-        derivative = (pv_plus_half_bp - pv_minus_half_bp)/ONE_BASIS_POINT  # 0.01 = 0.005 - -0.005
 
-        return derivative
 
-    def duration(self, instrument: UsTreasuryInstrument) -> float:
+    def calculate_pv01_risk(self,
+                            assets: PresentValueable,
+                            key_rate: KeyRate) -> Risk:
         """
-        Calculates the duration of the us_treasury_instruments, as
-        -1/P * dP/dy where P is the us_treasury_instruments price.
+        Calculates the risk of the assets, which is defined as the change in $ per 1 basis point
+        movement with respect to the key rate adjustment function.
         """
-        derivative = self.calculate_pv_deriv(instrument)
-        present_value = self.present_value(instrument)
-        return -derivative/present_value
+        risk = -self.calculate_key_rate_deriv(assets, key_rate) * ONE_BASIS_POINT
+        return Risk(key_rate_date=key_rate.key_rate_date, pv01=risk, index=CurveIndex.US_TREASURY)
 
-    def convexity(self, bond) -> float:
+    def calculate_pv01_risk_ladder(self,
+                                   assets: PresentValueable,
+                                   key_rate_collection: KeyRateCollection) -> RiskLadder:
         """
-        calculate the convexity of a us_treasury_instruments, defined as C := 1/P * d^2 P/d^2y
-        Reference: Tuckman and Serrat, 4th ed. equation (4.14).
+        Returns the risk ladder of the assets on the yield curve.
         """
+        pv01_risks = (self.calculate_pv01_risk(assets=assets, key_rate=key_rate) for key_rate in key_rate_collection)
+        return RiskLadder(pv01_risks)
 
-        derivative_positive_bump = self.calculate_pv_deriv(bond, offset=ONE_BASIS_POINT/2)
-        derivative_negative_bump = self.calculate_pv_deriv(bond, offset=-ONE_BASIS_POINT/2)
-        second_derivative = (derivative_positive_bump - derivative_negative_bump) / ONE_BASIS_POINT
-        present_value = self.present_value(bond)
 
-        return second_derivative / present_value
-
-    def dv01(self, bond, adjustment: KeyRate) -> float:
-        """
-        Calculates the DV01 with respect to a KeyRate.
-        """
-
-        adjustment.create_adjustment_function()  # creates the default adjustment function with 1 bp movement
-        pv_with_adjustment = self.present_value(bond, adjustment)
-        pv_without_adjustment = self.present_value(bond)
-        key_rate_dv01 = -(pv_with_adjustment - pv_without_adjustment) / (ONE_BASIS_POINT * 100)  # 100 to convert into bps
-
-        return key_rate_dv01
-
-    def calculate_dv01s(self, bond, key_rate_collection: KeyRateCollection) -> list[HedgeRatio]:
-        """
-        Computes the dv01s of the us_treasury_instruments with respect to each KeyRate in the KeyRateCollection.
-        Returns a list of HedgeRatios.
-        """
-
-        dv01_list = [self.dv01(bond, key_rate) for key_rate in key_rate_collection]
-
-        sum_of_dv01s = sum(dv01_list)
-
-        hedge_ratios = [dv01/sum_of_dv01s for dv01 in dv01_list]
-
-        key_rate_dates = [kr.key_rate_date for kr in key_rate_collection]
-
-        return [HedgeRatio(dv01, hedge_ratio, key_rate_date) for
-                (dv01, hedge_ratio, key_rate_date) in zip(dv01_list, hedge_ratios, key_rate_dates)]
 
 
     #----------------------------------------------------------------
@@ -275,44 +234,7 @@ class YieldCurve(Curve):
 
         title_string = f"{self.interpolation_space} Curve Interpolated " \
                        f"Using {self.interpolation_method.value.capitalize()} Method"
-
         plt.show()
-
-
-    def plot_price_curve(self,
-                         bond: UsTreasuryInstrument,
-                         lower_shift: float = -200 * ONE_BASIS_POINT,
-                         upper_shift: float = 200 * ONE_BASIS_POINT,
-                         shift_increment: float = ONE_BASIS_POINT
-                         ) -> None:
-        """
-        Plots the present value of the us_treasury_instruments along with linear (duration only) and
-        quadratic (duration+convexity) approximations of the us_treasury_instruments price as the yield curve
-        parallel shifts up and down.
-        """
-
-        deriv = self.calculate_pv_deriv(bond)
-        bond_pv = self.present_value(bond)
-        bond_convexty = self.convexity(bond)
-
-        parallel_shifts = np.arange(start=lower_shift, stop=upper_shift+shift_increment, step=shift_increment)
-
-        pv_vals = [self.present_value(bond, self.parallel_bump(shift)) for shift in parallel_shifts]
-        linear_approx = [deriv * shift + bond_pv for shift in parallel_shifts]
-        quad_approx = [bond_pv + deriv * shift + shift**2 * bond_pv*bond_convexty/2 for shift in parallel_shifts]
-
-        plt.figure(figsize=(10, 6))
-        plt.plot(parallel_shifts*10_000, pv_vals, color="black", linewidth=2)
-        plt.plot(parallel_shifts*10_000, quad_approx, color="black", linestyle="-.", linewidth=1.5)
-        plt.plot(parallel_shifts*10_000, linear_approx, color="black", linestyle=':', linewidth=1)
-        plt.xlabel("Shift in Basis Points (bp)")
-        plt.ylabel(f"Present Value in USD ($)")
-        plt.title(f'Present Value of {bond.tenor} Bond Across Parallel Shifts in the Yield Curve')
-        plt.legend(['Present Value', 'Approximation with Duration and Convexity', 'Approximation with Duration'],
-                   frameon=False)
-        plt.grid(True, alpha=0.5, linewidth=0.5)
-        plt.show()
-
 
 
 
