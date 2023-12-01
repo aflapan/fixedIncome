@@ -38,7 +38,7 @@ class VasicekModel(ShortRateModel):
 
     def __init__(self,
                  long_term_mean,
-                 reversion_scale,
+                 reversion_speed,
                  volatility,
                  start_date_time,
                  end_date_time,
@@ -46,10 +46,10 @@ class VasicekModel(ShortRateModel):
         self.start_date_time = start_date_time
         self.end_date_time = end_date_time
         self.long_term_mean = long_term_mean
-        self.reversion_scale = reversion_scale
+        self.reversion_speed = reversion_speed
         self.volatility = volatility
         self.drift_diffusion_pair = vasicek_drift_diffusion(long_term_mean=long_term_mean,
-                                                            reversion_scale=reversion_scale,
+                                                            reversion_scale=reversion_speed,
                                                             volatility=volatility)
 
         bm = BrownianMotion(start_date_time=start_date_time,
@@ -94,14 +94,14 @@ class VasicekModel(ShortRateModel):
         """
         Returns the long term variance of the Vasicek Model, equal to sigma**2 / 2*a.
         """
-        return self.volatility**2 / (2 * self.reversion_scale)
+        return self.volatility**2 / (2 * self.reversion_speed)
 
 
     def plot(self, show_fig: bool = False) -> None:
         """ Produces a plot of  """
 
         title_str = f'Vasicek Model Sample Path with Parameters\n' \
-                    f'Mean {self.long_term_mean}; Volatility {self.volatility}; Reversion Factor {self.reversion_scale}'
+                    f'Mean {self.long_term_mean}; Volatility {self.volatility}; Reversion Speed {self.reversion_speed}'
         plt.figure(figsize=(15, 6))
         plt.title(title_str)
         date_range = pd.date_range(start=self.start_date_time, end=self.end_date_time, periods=len(self.path.flatten()))
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
 
     vm = VasicekModel(long_term_mean=0.04,
-                      reversion_scale=2.0,
+                      reversion_speed=2.0,
                       volatility=0.02,
                       start_date_time=start_time,
                       end_date_time=end_time)
@@ -150,7 +150,7 @@ if __name__ == '__main__':
 
     plt.grid(alpha=0.25)
     plt.title(f'Discount Curves from Continuously-Compounding the Vasicek Model Short Rate with Model Parameters\n'
-              f'Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Factor {vm.reversion_scale}')
+              f'Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
     plt.ylabel('Discount Factor')
     plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Discount_Curves.png')
     plt.show()
