@@ -132,7 +132,7 @@ if __name__ == '__main__':
     plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
     plt.show()
 
-    NUM_CURVES = 1_000
+    NUM_CURVES = 20
     plt.figure(figsize=(13, 5))
     for seed in range(NUM_CURVES):
         vm.generate_path(starting_value=0.08, set_path=True, seed=seed)
@@ -144,13 +144,14 @@ if __name__ == '__main__':
                                                        max_dates=1_000_000)
 
         discount_factors = [vm_df_curve(date_obj) for date_obj in dates]
-        plt.plot(dates, discount_factors, color='tab:blue', alpha=0.01, linewidth=0.5)
+        plt.plot(dates, discount_factors, color='tab:blue', alpha=1, linewidth=0.5)
         print(seed)
 
 
     plt.grid(alpha=0.25)
-    plt.title(f'Discount Curves from Continuously-Compounding the Vasicek Model Short Rate with Model Parameters\n'
-              f'Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
+    plt.title(f'Discount Curves from Continuously-Compounding {NUM_CURVES} Vasicek Model Short Rate Paths\n'
+              f'with Model Parameters Mean {vm.long_term_mean}; '
+              f'Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
     plt.ylabel('Discount Factor')
     plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Discount_Curves.png')
     plt.show()
