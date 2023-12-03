@@ -7,6 +7,7 @@ The below plot represents some of the current capabilities of the package.
 
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Short_Rate.png)
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Discount_Curves.png)
+![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Convexity.png)
 
 
 This project is currently under construction, and future work will include (in order of immediacy):
