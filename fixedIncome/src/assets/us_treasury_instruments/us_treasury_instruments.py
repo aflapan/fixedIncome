@@ -351,29 +351,37 @@ class UsTreasuryBond(CashflowCollection):
 
         return float(solution['x'])
 
+    def pv_deriv(self, offset: float = 0, ytm: Optional[float] = None) -> float:
+        """
+        Computes the derivative of the present value with respect to the bond's yield (Yield to Maturity).
+        It is numerically calculated as
+        ( PV(ytm + offset + ONE_BASIS_POINT/2) - PV(ytm + offset - ONE_BASIS_POINT/2) ) / ONE_BASIS_POINT
+        """
+        if ytm is None:
+            ytm = self.yield_to_maturity()
+
+        bumped_up_pv = self.discount_cashflows_by_fixed_rate(ytm + offset + ONE_BASIS_POINT/2)
+        bumped_down_py = self.discount_cashflows_by_fixed_rate(ytm + offset - ONE_BASIS_POINT/2)
+        return (bumped_up_pv - bumped_down_py) / ONE_BASIS_POINT
+
     def duration(self) -> float:
         """
         Calculates the DV01 of the bond with respect to its yield to maturity,
         defined to be:
         Duration = -1/P * dP/d ytm
         """
-        ytm = self.yield_to_maturity()
-        bumped_up_pv = self.discount_cashflows_by_fixed_rate(ytm + ONE_BASIS_POINT/2)
-        bumped_down_py = self.discount_cashflows_by_fixed_rate(ytm - ONE_BASIS_POINT/2)
-        pv_deriv = (bumped_up_pv - bumped_down_py)/ONE_BASIS_POINT
-        return -pv_deriv / self.full_price
+        return -self.pv_deriv() / self.full_price  #TODO: determine if I need to use full price of clean price here
 
     def convexity(self) -> float:
         """
         calculate the convexity of a us_treasury_instruments, defined as C := 1/P * d^2 P/d^2y
         Reference: Tuckman and Serrat, 4th ed. equation (4.14).
         """
-        derivative_positive_bump = self.calculate_pv_deriv(assets, offset=ONE_BASIS_POINT/2)
-        derivative_negative_bump = self.calculate_pv_deriv(assets, offset=-ONE_BASIS_POINT/2)
+        ytm = self.yield_to_maturity()
+        derivative_positive_bump = self.calculate_pv_deriv(offset=ONE_BASIS_POINT/2, ytm=ytm)
+        derivative_negative_bump = self.calculate_pv_deriv(offset=-ONE_BASIS_POINT/2, ytm=ytm)
         second_derivative = (derivative_positive_bump - derivative_negative_bump) / ONE_BASIS_POINT
-        present_value = self.present_value(assets)
-        return second_derivative / present_value
-
+        return second_derivative / self.full_price  # TODO: Check if full price or clean price is needed
 
 
 class UsTreasuryFuture(CashflowCollection):

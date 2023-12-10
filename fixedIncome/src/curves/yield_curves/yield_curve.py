@@ -160,7 +160,7 @@ class YieldCurve(Curve):
         Calculates the risk of the assets, which is defined as the change in $ per 1 basis point
         movement with respect to the key rate adjustment function.
         """
-        risk = -self.calculate_key_rate_deriv(assets, key_rate) * ONE_BASIS_POINT
+        risk = self.calculate_key_rate_deriv(assets, key_rate) * ONE_BASIS_POINT
         return Risk(key_rate_date=key_rate.key_rate_date, pv01=risk, index=CurveIndex.US_TREASURY)
 
     def calculate_pv01_risk_ladder(self,
