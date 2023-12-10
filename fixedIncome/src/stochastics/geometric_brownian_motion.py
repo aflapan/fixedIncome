@@ -102,17 +102,17 @@ if __name__ == '__main__':
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
 
-    rho = 0.99
-    correlation_mat = np.array([[1.0, rho], [rho, 1.0]])
+    rho = 0.5
+    correlation_mat = np.array([[1.0, rho, rho], [rho, 1.0, rho], [rho, rho, 1.0]])
 
     gbm = GeometricBrownianMotion(drift=0.05,
                                   volatility=0.25,
                                   start_date_time=start_time,
                                   end_date_time=end_time,
-                                  dimension=2,
+                                  dimension=3,
                                   correlation_matrix=correlation_mat)
 
-    path = gbm.generate_path(starting_value=np.array([1.0, 1.0]), seed=1)
+    path = gbm.generate_path(starting_value=np.array([1.0, 1.0, 1.0]), seed=1)
 
     plt.figure(figsize=(13, 6))
     plt.plot(path.T, linewidth=0.5)
