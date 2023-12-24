@@ -152,7 +152,7 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         self.yield_state_variable_coeffs = {'intercept': intercept, 'coefficient': coefficient}
 
 
-    def zero_coupon_bond_price(self, initial_value_short_rate: float, maturity_date: date) -> float:
+    def zero_coupon_bond_price(self, initial_value_short_rate: float, maturity_date: date | datetime) -> float:
         """
         Overrides the abstract class method
 
@@ -162,7 +162,7 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         return math.exp(self.bond_price_state_variable_coeffs['intercept']
                         + self.bond_price_state_variable_coeffs['coefficient'] * initial_value_short_rate)
 
-    def zero_coupon_yield(self, initial_value_short_rate: float, maturity_date: date) -> float:
+    def zero_coupon_yield(self, initial_value_short_rate: float, maturity_date: date | datetime) -> float:
         """
         Overrides the abstract class method
         Reference:  Pages 165-171 of Rebonato *Bond Pricing and Yield Curve Modeling*.
@@ -172,6 +172,31 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
                       + self.yield_state_variable_coeffs['coefficient'] * initial_value_short_rate
 
         return yield_value
+
+    def yield_convexity(self, maturity_date: date | datetime) -> float:
+        """
+        Calculates the theoretical convexity of the Vasicek Model in yield terms. I.e., it calculates
+        the difference between the actual yield for a time T zero-coupon bond and the pseudo-yield
+        constructed by pricing a zero-coupon bond using the conditional expected value of the short rate path
+        """
+        accrual = DayCountCalculator.compute_accrual_length(self.start_date_time,
+                                                            maturity_date,
+                                                            self.day_count_convention)
+        self._create_bond_price_coeffs(maturity_date)
+        term1 = (-self.bond_price_state_variable_coeffs['coefficient'] - accrual) / (2 * self.reversion_speed**2)
+        term2 = self.bond_price_state_variable_coeffs['coefficient']**2 / (4 * self.reversion_speed)
+        return (self.volatility**2 / accrual) * (term1 + term2)
+
+    def yield_volatility(self, maturity_date: date | datetime) -> float:
+        """
+        Returns the volatility for a zero-coupon bond's yield for time T-maturity bonds.
+        """
+        accrual = DayCountCalculator.compute_accrual_length(self.start_date_time,
+                                                            maturity_date,
+                                                            self.day_count_convention)
+        self._create_bond_price_coeffs(maturity_date)
+        return -(self.bond_price_state_variable_coeffs['coefficient'] / accrual) * self.volatility
+
 
     # Plotting
 
@@ -239,7 +264,7 @@ if __name__ == '__main__':
     #plt.show()
 
     # CONVEXITY
-    NUM_CURVES = 100_000
+    NUM_CURVES = 10_000
     INITIAL_SHORT_RATE = 0.08
     vm_avg_short_rate = np.zeros((1, len(admissible_dates)))
     vm_avg_df = np.zeros((1, len(admissible_dates)))
@@ -303,11 +328,15 @@ if __name__ == '__main__':
                loc='lower left', frameon=False)
 
     ax2 = ax.twinx()
-    convexity_adjustment = [(yield_price - yield_avg_rate) * 100
-                            for yield_price, yield_avg_rate in zip(yields_for_prices, yields_for_avg_short_rate)]
-    plt.plot(admissible_dates[1:], convexity_adjustment, color='grey', linestyle='--')
+    monte_carlo_diff = [(yield_price - yield_avg_rate) * 100
+                        for yield_price, yield_avg_rate in zip(yields_for_prices, yields_for_avg_short_rate)]
 
-    plt.legend(['Convexity Adjustment (Right)'],
+    affine_diff = [vm.yield_convexity(datetime_obj) * 10_000 for datetime_obj in admissible_dates[1:]]
+
+    plt.plot(admissible_dates[1:], monte_carlo_diff, color='grey')
+    plt.plot(admissible_dates[1:], affine_diff, color='grey', linestyle='dotted')
+
+    plt.legend(['Monte Carlo Convexity Adjustment (Right)', 'Affine Convexity Adjustment (Right)'],
                loc='upper right', frameon=False)
 
     ax2.set_ylabel('Difference (bp)')
