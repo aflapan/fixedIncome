@@ -23,10 +23,12 @@ class ShortRateModel:
     def __init__(self,
                  drift_diffusion_collection: dict[str, DriftDiffusionPair],
                  brownian_motion: BrownianMotion,
+                 day_count_convention: DayCountConvention,
                  dt: float = 1/1_000  # dt increment in units of years
                  ) -> None:
         self.drift_diffusion_collection = drift_diffusion_collection
         self.brownian_motion = brownian_motion
+        self.day_count_convention = day_count_convention
         self._dt = dt
         self._rate_index = 0  # row index of the self.path numpy array which corresponds to the short rate
                               # Subclass models will often generate multiple different intermediary rates/values
@@ -117,11 +119,12 @@ class ShortRateModel:
         for start_dt, end_dt in itertools.pairwise(datetimes):
             start_rate, end_rate = self(start_dt)[self.rate_index], self(end_dt)[self.rate_index]
             min_rate, max_rate = min(start_rate, end_rate), max(start_rate, end_rate)
+            accrual = DayCountCalculator.compute_accrual_length(start_dt, end_dt, self.day_count_convention)
 
             if min_rate < 0:
-                next_trapezoid_val = max_rate * self.dt + (min_rate - max_rate) * self.dt / 2
+                next_trapezoid_val = max_rate * accrual + (min_rate - max_rate) * accrual / 2
             else:
-                next_trapezoid_val = min_rate * self.dt + (max_rate - min_rate) * self.dt / 2
+                next_trapezoid_val = min_rate * accrual + (max_rate - min_rate) * accrual / 2
             # compute integral
             running_integral += next_trapezoid_val
             interpolation_values.append(running_integral)

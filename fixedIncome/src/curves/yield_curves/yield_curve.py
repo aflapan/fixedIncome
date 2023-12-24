@@ -173,8 +173,6 @@ class YieldCurve(Curve):
         return RiskLadder(pv01_risks)
 
 
-
-
     #----------------------------------------------------------------
     # plotting methods
     def plot(self, adjustment: Optional[Callable[[date], float]] = None) -> None:
