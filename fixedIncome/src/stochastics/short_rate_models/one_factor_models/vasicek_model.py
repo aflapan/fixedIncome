@@ -264,7 +264,7 @@ if __name__ == '__main__':
     #plt.show()
 
     # CONVEXITY
-    NUM_CURVES = 10_000
+    NUM_CURVES = 100_000
     INITIAL_SHORT_RATE = 0.08
     vm_avg_short_rate = np.zeros((1, len(admissible_dates)))
     vm_avg_df = np.zeros((1, len(admissible_dates)))
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     plt.plot(admissible_dates[1:], yield_for_conditional_mean_short_rate, color='darkred', linestyle='dotted')
 
     plt.grid(alpha=0.25)
-    plt.title(f'Yield Convexity in the Vasicek Model: Yields for Zero-Coupon Bonds Generates from {"{:,}".format(NUM_CURVES)} Short Rate Sample Paths\n'
+    plt.title(f'Yield Convexity in the Vasicek Model: Yields for Zero-Coupon Bonds Generated from {"{:,}".format(NUM_CURVES)} Short Rate Sample Paths\n'
               f'and Comparing it to the Yields Constructed by Pricing Bonds using the Average Short Rate Path;'
               f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
     plt.ylabel('Yield (%)')
