@@ -9,7 +9,7 @@ class AffineModelMixin:
     A Mixin class for including functionality for zero-coupon bond prices and yields
     based on an affine yield model.
     """
-    bond_price_state_variable_coeffs: Optional[dict] = None
+    price_state_variable_coeffs: Optional[dict] = None
     yield_state_variable_coeffs: Optional[dict] = None
 
     @abstractmethod
