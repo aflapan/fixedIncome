@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from fixedIncome.src.curves.curve_enumerations import CurveIndex
 
 ONE_BASIS_POINT = 0.0001
+ONE_PERCENT = 0.01
 
 
 @dataclass

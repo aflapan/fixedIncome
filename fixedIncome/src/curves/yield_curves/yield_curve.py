@@ -50,7 +50,8 @@ class YieldCurve(Curve):
                          interpolation_day_count_convention,
                          reference_date,
                          left_end_behavior,
-                         right_end_behavior)
+                         right_end_behavior,
+                         CurveIndex.US_TREASURY)
 
         self.instruments = instruments
         self.quote_adjustments = quote_adjustments

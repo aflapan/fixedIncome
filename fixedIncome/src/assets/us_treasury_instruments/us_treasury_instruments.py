@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.holidays import Holiday, US_FEDERAL_HOLIDAYS
+from fixedIncome.src.risk.risk_metrics import ONE_BASIS_POINT, ONE_PERCENT
 from fixedIncome.src.scheduling_tools.schedule_enumerations import (PaymentFrequency,
                                                                     BusinessDayAdjustment,
                                                                     DayCountConvention,
@@ -24,9 +25,6 @@ from fixedIncome.src.scheduling_tools.schedule_enumerations import (PaymentFrequ
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 from fixedIncome.src.curves.base_curve import DiscountCurve, KnotValuePair
 from fixedIncome.src.assets.base_cashflow import CashflowCollection, CashflowKeys, Cashflow, Payment
-
-ONE_BASIS_POINT = 0.0001
-ONE_PERCENT = 0.01
 
 @dataclass
 class BondPayment(Payment):
@@ -113,11 +111,11 @@ class UsTreasuryBond(CashflowCollection):
 
         present_value_coupons = sum(curve(payment.payment_date) * payment.payment
                                     for payment in self[CashflowKeys.COUPON_PAYMENTS]
-                                    if self.is_payment_received(payment))
+                                    if self.is_payment_received(payment, reference_date=curve.reference_date))
 
         present_value_principal = sum(curve(payment.payment_date) * payment.payment
                                       for payment in self[CashflowKeys.SINGLE_PAYMENT]
-                                      if self.is_payment_received(payment))
+                                      if self.is_payment_received(payment, reference_date=curve.reference_date))
 
         return present_value_coupons + present_value_principal
 

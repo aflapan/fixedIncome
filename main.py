@@ -58,10 +58,11 @@ def main(bond_collection, curve_factory) -> None:
                            prior_date=date(2043, 2, 15),
                            next_date=None)
 
+    portfolio = Portfolio([PortfolioEntry(asset=bond, quantity=1) for bond in bond_list])
     key_rate_list = [four_wk_kr, one_yr_kr, two_yr_kr, three_year_kr, seven_yr_kr, ten_yr_kr, twenty_yr_kr,
                      thirty_yr_kr]
 
-    kr_collection = KeyRateCollection(key_rate_list)
+    kr_collection = portfolio.to_key_rate_collection(DayCountConvention.ACTUAL_OVER_ACTUAL)
     #yield_curve.plot(adjustment=kr_collection)
 
 
@@ -75,7 +76,6 @@ def main(bond_collection, curve_factory) -> None:
     print("Risk ladder is...")
     print(risk_ladder)
 
-    tail_risk = yield_curve.calculate_pv01_risk(long_short_bond_portfolio.assets[1].asset, kr_collection[-1])
 
 
 if __name__ == '__main__':

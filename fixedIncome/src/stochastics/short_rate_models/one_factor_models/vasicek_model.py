@@ -22,8 +22,8 @@ from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volatility: float) -> DriftDiffusionPair:
     """
     Function to auto-generate the drift and diffusion functions for the Vasicek interest rate
-    model. The model has the SDE dr = a * (m - r) dt + sigma dWt where
-    a is a positive float representing the mean reversion scaling,
+    model. The model has the SDE dr = k * (m - r) dt + sigma dWt where
+    k is a positive float representing the reversion speed,
     m is the long-term mean for the interest rate, and
     sigma is the volatility.
     """
@@ -392,8 +392,6 @@ if __name__ == '__main__':
     plt.show()
 
 
-
-
     #-----------------------------------------------------------------------
     # Yield curves for different reversion speeds
 
@@ -421,12 +419,13 @@ if __name__ == '__main__':
                                        for date_obj in admissible_dates[1:]])
 
     ax.grid(alpha=0.25)
-    plt.title('Yields Across Reversion Speeds and Maturity Dates for the Vasicek Model')
+    plt.title(f'Yields Across Reversion Speeds and Maturity Dates for the Vasicek Model'
+              f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed Varies')
     plt.xlabel('Maturity Date')
     plt.ylabel('Yield (%)')
     ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
               title='Reversion Speed',
-              bbox_to_anchor=(1.025, 0.6), frameon=False)
+              bbox_to_anchor=(1.2, 0.65), frameon=False)
     plt.tight_layout()
     plt.show()
 

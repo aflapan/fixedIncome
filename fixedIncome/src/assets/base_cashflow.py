@@ -89,13 +89,13 @@ class Cashflow(Iterable):
         return cls(payments=(Payment(payment_date, payment) for payment_date, payment in zip(payment_dates, payments)))
 
 class CashflowKeys(Enum):
-    SINGLE_PAYMENT = 'zero coupon'
-    COUPON_PAYMENTS = 'coupon payments'
-    FIXED_LEG = 'fixed leg'
-    FLOATING_LEG = 'floating leg'
-    PROTECTION_LEG = 'protection leg'
-    PREMIUM_LEG = 'premium leg'
-    MARK_TO_MARKET = 'mark to market'
+    SINGLE_PAYMENT = 0
+    COUPON_PAYMENTS = 1
+    FIXED_LEG = 2
+    FLOATING_LEG = 3
+    PROTECTION_LEG = 4
+    PREMIUM_LEG = 5
+    MARK_TO_MARKET = 6
 
 class CashflowCollection(Set):
     """

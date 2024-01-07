@@ -34,7 +34,8 @@ class Curve(Callable):
                  interpolation_day_count_convention: DayCountConvention,
                  reference_date: Optional[date] = None,
                  left_end_behavior: EndBehavior = EndBehavior.ERROR,
-                 right_end_behavior: EndBehavior = EndBehavior.ERROR) -> None:
+                 right_end_behavior: EndBehavior = EndBehavior.ERROR,
+                 index: CurveIndex = CurveIndex.NONE) -> None:
 
         self._interpolation_values = sorted(list(interpolation_values), key=lambda interp_val: interp_val.knot)
         self.interpolation_method = interpolation_method
@@ -42,6 +43,7 @@ class Curve(Callable):
         self.reference_date = reference_date if reference_date is not None else self.interpolation_values[0].knot
         self.left_end_behavior = left_end_behavior
         self.right_end_behavior = right_end_behavior
+        self._index = index
 
         self.interpolator: Callable[[date], float]
         self._create_interpolation_object()
@@ -49,6 +51,10 @@ class Curve(Callable):
     @property
     def interpolation_values(self) -> list[KnotValuePair]:
         return self._interpolation_values
+
+    @property
+    def index(self) -> CurveIndex:
+        return self._index
 
     def __call__(self, date_obj: date, adjustment: Optional[Callable[[date], float]] = None) -> float:
         """ Shortcut to calling the interpolate method which allows the user to call the object directly. """
