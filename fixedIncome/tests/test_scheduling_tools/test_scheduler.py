@@ -117,3 +117,18 @@ def test_generate_date_by_increments_negative_increments() -> None:
     assert test_result == expected_result
 
 
+def test_modified_following_adjustment_goes_back_at_months_end() -> None:
+    """
+    tests that the modified following business day adjustment correctly goes backwards when the initial date
+    is a non-business day at the end of the month.
+    """
+    start_date = date(2023, 12, 31)
+    expected_result = date(2023, 12, 29)
+    test_result = Scheduler.modified_following_date_adjustment(start_date, US_FEDERAL_HOLIDAYS)
+    assert test_result == expected_result
+
+
+
+
+
+

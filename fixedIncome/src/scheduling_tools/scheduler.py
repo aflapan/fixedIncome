@@ -181,7 +181,7 @@ class Scheduler(object):
 
         candidate_adjusted_date = Scheduler.add_business_days(date_obj, business_days=0, holiday_calendar=holiday_calendar)
 
-        if candidate_adjusted_date.month == date.month:
+        if candidate_adjusted_date.month == date_obj.month:
             return candidate_adjusted_date
 
         else:
@@ -206,6 +206,25 @@ class Scheduler(object):
         """
 
         match settlement_convention:
+
+            case SettlementConvention.T_MINUS_TWO_BUSINESS:
+                return Scheduler.add_business_days(purchase_date,
+                                                   business_days=-2,
+                                                   holiday_calendar=holiday_calendar)
+
+            case SettlementConvention.T_MINUS_ONE_BUSINESS:
+                return Scheduler.add_business_days(purchase_date,
+                                                   business_days=-1,
+                                                   holiday_calendar=holiday_calendar)
+
+            case SettlementConvention.T_MINUS_ZERO_BUSINESS:
+                if Scheduler.is_business_day(purchase_date, holiday_calendar):
+                    return purchase_date
+                else:
+                    return Scheduler.add_business_days(purchase_date,
+                                                       business_days=-1,
+                                                       holiday_calendar=holiday_calendar)
+
             case SettlementConvention.T_PLUS_ZERO_BUSINESS:
                 return Scheduler.add_business_days(purchase_date,
                                                    business_days=0,

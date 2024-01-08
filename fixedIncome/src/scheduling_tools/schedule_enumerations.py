@@ -22,6 +22,9 @@ class DayCountConvention(Enum):
 
 
 class SettlementConvention(Enum):
+    T_MINUS_TWO_BUSINESS = -3
+    T_MINUS_ONE_BUSINESS = -2
+    T_MINUS_ZERO_BUSINESS = -1
     T_PLUS_ZERO_BUSINESS = 0
     T_PLUS_ONE_BUSINESS = 1
     T_PLUS_TWO_BUSINESS = 2
