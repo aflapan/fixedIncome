@@ -128,7 +128,3 @@ def test_modified_following_adjustment_goes_back_at_months_end() -> None:
     assert test_result == expected_result
 
 
-
-
-
-
