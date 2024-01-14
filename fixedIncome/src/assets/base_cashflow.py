@@ -35,14 +35,13 @@ class Cashflow(Iterable):
         return len(self.schedule)
 
     def __getitem__(self, key: int) -> Payment | Cashflow:
-        """  Retrieves a Cahsflow or Payment object from the collection via indexing. """
+        """  Retrieves a Cashflow or Payment object from the collection via indexing. """
         if isinstance(key, slice):
             cls = type(self)
             return cls(self.schedule[key])
 
         index = operator.index(key)
         return self.schedule[index]
-
 
     def get_payment_amounts(self) -> list[Optional[float]]:
         """ Returns a list of the payment amounts """
@@ -102,7 +101,7 @@ class CashflowCollection(Set):
     This is the base class from which all financial assets will be subclassed.
     It is a bare-bones template which represents a collection of cashflows.
     """
-    def __init__(self, cashflows: Iterable[Cashflow], cashflow_keys: Iterable[CashflowKeys]) -> None:
+    def __init__(self, cashflows: Iterable[Optional[Cashflow]], cashflow_keys: Iterable[CashflowKeys]) -> None:
 
         self.cashflow_list = list(cashflows)
         self.keys = list(cashflow_keys)
@@ -132,6 +131,18 @@ class CashflowCollection(Set):
         except KeyError:
             return self.cashflows[item.value]
 
+    def __setitem__(self, cashflow_key: CashflowKeys, new_cashflow: Cashflow) -> None:
+        """
+        Method to put a new cashflow into the Cashflow collection based on key.
+        """
+        if cashflow_key in self.cashflows:
+            self.cashflows[cashflow_key] = new_cashflow
+        else:
+            self.cashflow_list.append(new_cashflow)
+            self.keys.append(cashflow_key)
+            self.cashflows[cashflow_key] = new_cashflow
+
+
     @abstractmethod
     def to_knot_value_pair(self) -> KnotValuePair:
         """
@@ -156,7 +167,7 @@ class ZeroCoupon(CashflowCollection):
         self._price = price
         single_payment_iterable = [Payment(self._payment_date, 1.0)]
         cashflows = [Cashflow(single_payment_iterable)]  # a singleton cashflow of $1
-        cashflow_keys = [CashflowKeys.SINGLE_PAYMENT.value]
+        cashflow_keys = [CashflowKeys.SINGLE_PAYMENT]
         super().__init__(cashflows, cashflow_keys)
 
     @property

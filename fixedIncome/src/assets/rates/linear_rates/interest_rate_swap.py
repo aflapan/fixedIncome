@@ -1,12 +1,12 @@
 """
 This script contains classes for a Term interest rate swap and Overnight Interest Rate Swap.
 
+Unit tests contained in tests/tets_assets/test_rates_test_linear_rates/test_interest_rate_swap.py
 """
 from enum import Enum
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from typing import NamedTuple, Optional, Callable
-from dataclasses import dataclass
 import itertools
 
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
@@ -51,6 +51,10 @@ class TermInterestRateSwap(CashflowCollection):
                  payment_delay: SettlementConvention = SettlementConvention.T_PLUS_TWO_BUSINESS,
                  business_day_adjustment: BusinessDayAdjustment = BusinessDayAdjustment.MODIFIED_FOLLOWING
                  ) -> None:
+        """
+        Creates an instance of a Term Interest Rate Swap for exchanging fixed interest rate payments with floating
+        interest rate payments.
+        """
 
         self._float_index = float_index
         self._direction = direction
@@ -67,7 +71,7 @@ class TermInterestRateSwap(CashflowCollection):
         self._fixing_date_for_accrual_period = fixing_date_for_accrual_period
         self._payment_delay = payment_delay
         self._business_day_adjustment = business_day_adjustment
-        self._date_adjustment_function = self.create_date_adjustment_function()
+        self._date_adjustment_function = self._create_date_adjustment_function()
         self._start_accrual_date, self._end_accrual_date = self.calculate_start_end_accrual_dates()
 
         cashflows = (None, None)
@@ -179,16 +183,39 @@ class TermInterestRateSwap(CashflowCollection):
 
     # Interface Methods
     def to_knot_value_pair(self) -> KnotValuePair:
-        pass
-
-    def present_value(self, discount_curve: DiscountCurve, interest_rates: Callable[[date], float]) -> float:
         """
+        Returns a KnotValuePair which represents the TermIntertestRateSwap
+        for the purposes of interest rate curve calibration.
 
+        The knot corresponds to the last exposure date of the swap legs, i.e. the end_accrual_date,
+        and the value is the fixed_rate.
         """
-        pass
+        return KnotValuePair(knot=self.end_accrual_date, value=self.fixed_rate)
 
+    def present_value(self, discount_curve: DiscountCurve) -> float:
+        """
+        Computes the present value
+        """
+        if self[CashflowKeys.FIXED_LEG] is None or self[CashflowKeys.FLOATING_LEG] is None:
+            raise ValueError(f'Fixed leg or floating leg are None, so present value cannot be taken. '
+                             f'First apply create_floating_leg_cashflow or create_fixed_leg_cashflow with the'
+                             f' set_cashflow param set to True.')
 
-    def create_date_adjustment_function(self) -> Callable[[date], date]:
+        float_pv = discount_curve.present_value(self[CashflowKeys.FLOATING_LEG])
+        fixed_pv = discount_curve.present_value(self[CashflowKeys.FIXED_LEG])
+
+        match self.direction:
+            case InterestRateSwapDirection.RECEIVER_FIXED:
+                return fixed_pv - float_pv
+
+            case InterestRateSwapDirection.PAYER_FIXED:
+                return float_pv - fixed_pv
+
+            case _:
+                raise ValueError(f'Swap direction {self.direction} is not valid.')
+
+    # Float/Fixed leg methods
+    def _create_date_adjustment_function(self) -> Callable[[date], date]:
         """
         Creates the date adjustment function for adjusting payment days which don't fall on
         a business day. The adjustment used is dictated by the BusinessDayAdjustment.
@@ -207,7 +234,7 @@ class TermInterestRateSwap(CashflowCollection):
 
     def generate_floating_leg_accrual_schedule(self) -> list[SwapAccrual]:
         """
-        Returns
+        Returns a list of SwapAccrual corresponding to all payments of the floating leg.
         """
         match self.floating_leg_payment_frequency:
             case PaymentFrequency.ANNUAL:
@@ -244,7 +271,7 @@ class TermInterestRateSwap(CashflowCollection):
 
     def generate_fixed_leg_accrual_schedule(self) -> list[SwapAccrual]:
         """
-        Generates a list of all fixed leg accruals
+        Returns a list of SwapAccrual corresponding to all payments of the fixed leg.
         """
 
         match self.fixed_leg_payment_frequency:
@@ -278,13 +305,18 @@ class TermInterestRateSwap(CashflowCollection):
 
         return fixed_leg_accruals
 
-    def create_floating_leg_cashflow(self, interest_rate: Callable[[date], float]) -> Cashflow:
+    def create_floating_leg_cashflow(self, interest_rate: Callable[[date], float], set_cashflow: bool = True) -> Cashflow:
         """
         Creates a cashflow of floating leg payments from the provided interest rate callable.
 
         The interest_rate argument is assumed to be a general callable object which maps dates to
         floats representing interest rates. These could be either forward rates from a curve
         or short rates from a short rate model.
+
+        The method iterates through all accruals made by the generate_fixed_leg_accrual_schedule()
+        method and calculates the payment amount defined by:
+            interest_rate(fixing_date) * self.notional * accrual_factor
+        for each fixing_date and accrual_factor in the SwapAccrual list. Returns a Cashflow containing all these payments.
         """
 
         floating_leg_accruals = self.generate_floating_leg_accrual_schedule()
@@ -302,16 +334,24 @@ class TermInterestRateSwap(CashflowCollection):
                                                                self.holiday_calendar)
 
             payment_amount = accrual.accrual_factor * self.notional * interest_rate_fixing
-
             payment = Payment(payment_date=payment_date, payment=payment_amount)
-
             floating_payments.append(payment)
 
-        return Cashflow(floating_payments)
+        floating_cf = Cashflow(floating_payments)
 
-    def create_fixed_leg_cashflow(self) -> Cashflow:
+        if set_cashflow:
+            self[CashflowKeys.FLOATING_LEG] = floating_cf
+
+        return floating_cf
+
+    def create_fixed_leg_cashflow(self, set_cashflow: bool = True) -> Cashflow:
         """
-        Creates a cashflow of fixed leg payments.
+        Creates a cashflow of fixed leg payments based on the swap's self.fixed_rate.
+
+        The method iterates through all accruals made by the generate_fixed_leg_accrual_schedule()
+        method and calculates the payment amount defined by:
+            self.fixed_rate * self.notional * accrual_factor
+        for each accrual_factor in the SwapAccrual list. Returns a Cashflow containing all these payments.
         """
         fixed_leg_accruals = self.generate_fixed_leg_accrual_schedule()
         fixed_payments = []
@@ -325,7 +365,12 @@ class TermInterestRateSwap(CashflowCollection):
             payment = Payment(payment_date=payment_date, payment=payment_amount)
             fixed_payments.append(payment)
 
-        return Cashflow(fixed_payments)
+        fixed_cf = Cashflow(fixed_payments)
+
+        if set_cashflow:
+            self[CashflowKeys.FIXED_LEG] = fixed_cf
+
+        return fixed_cf
 
 
 class OvernightIndexSwap:
@@ -366,5 +411,5 @@ if __name__ == '__main__':
                        interpolation_method=InterpolationMethod.LINEAR,
                        interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_360)
 
-    test_cashflow = test_libor_swap.create_floating_leg_cashflow(test_curve)
+    test_cashflow = test_libor_swap.create_floating_leg_cashflow(test_curve, )
     print(list(test_cashflow))
