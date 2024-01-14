@@ -29,12 +29,8 @@ class InterestRateSwapDirection(Enum):
 class SwapAccrual(NamedTuple):
     start_accrual: date
     end_accrual: date
-    accrual_factor: Optional[float] = None
-
-
-@dataclass
-class SwapPayment(Payment):
     fixing_date: Optional[date] = None
+    accrual_factor: Optional[float] = None
 
 
 class TermInterestRateSwap(CashflowCollection):
@@ -43,9 +39,9 @@ class TermInterestRateSwap(CashflowCollection):
                  direction: InterestRateSwapDirection,
                  fixed_rate: float,
                  notional: int,
-                 start_accrual_date: date,
-                 end_accrual_date: date,
                  purchase_date: date,
+                 settlement_convention: SettlementConvention,
+                 tenor: str,
                  floating_leg_payment_frequency: PaymentFrequency,
                  fixed_leg_payment_frequency: PaymentFrequency,
                  floating_leg_day_count_convention: DayCountConvention,
@@ -60,8 +56,8 @@ class TermInterestRateSwap(CashflowCollection):
         self._direction = direction
         self._fixed_rate = fixed_rate
         self._notional = notional
-        self._start_accrual_date = start_accrual_date
-        self._end_accrual_date = end_accrual_date
+        self._settlement_convention = settlement_convention
+        self._tenor = tenor
         self._purchase_date = purchase_date
         self._floating_leg_payment_frequency = floating_leg_payment_frequency
         self._fixed_leg_payment_frequency = fixed_leg_payment_frequency
@@ -72,6 +68,7 @@ class TermInterestRateSwap(CashflowCollection):
         self._payment_delay = payment_delay
         self._business_day_adjustment = business_day_adjustment
         self._date_adjustment_function = self.create_date_adjustment_function()
+        self._start_accrual_date, self._end_accrual_date = self.calculate_start_end_accrual_dates()
 
         cashflows = (None, None)
 
@@ -91,16 +88,23 @@ class TermInterestRateSwap(CashflowCollection):
         return self._notional
 
     @property
-    def start_accrual_date(self) -> date:
-        return self._start_accrual_date
+    def settlement_convention(self) -> SettlementConvention:
+        return self._settlement_convention
 
     @property
-    def end_accrual_date(self) -> date:
-        return self._end_accrual_date
+    def tenor(self) -> str:
+        return self._tenor
 
     @property
     def purchase_date(self) -> date:
         return self._purchase_date
+
+    @property
+    def start_accrual_date(self) -> date:
+        return self._start_accrual_date
+    @property
+    def end_accrual_date(self) -> date:
+        return self._end_accrual_date
 
     @property
     def float_index(self) -> CurveIndex:
@@ -150,11 +154,34 @@ class TermInterestRateSwap(CashflowCollection):
     def payment_delay(self) -> SettlementConvention:
         return self._payment_delay
 
+    def calculate_start_end_accrual_dates(self) -> tuple[date, date]:
+        """
+        Returns a tuple (start, end) of start accrual date and end accrual dates.
+        """
+        start_accrual = Scheduler.calculate_settlement_date(purchase_date=self.purchase_date,
+                                                            settlement_convention=self.settlement_convention,
+                                                            holiday_calendar=self.holiday_calendar)
+
+        length_str_slice = slice(-1)
+        length = int(self.tenor[length_str_slice])
+
+        match self.tenor[-1]:
+            case 'Y':
+                end_accrual = start_accrual + relativedelta(years=length)
+            case 'M':
+                end_accrual = start_accrual + relativedelta(months=length)
+            case _:
+                raise ValueError(f'{self.tenor[-1]} is not a valid tenor unit indicator. '
+                                 f'Tenor must be in the form [int]Y or [int]M.')
+
+        return start_accrual, end_accrual
+
+
     # Interface Methods
     def to_knot_value_pair(self) -> KnotValuePair:
         pass
 
-    def present_value(self, discount_curve: DiscountCurve, interes_rates: Callable[[date], float]) -> float:
+    def present_value(self, discount_curve: DiscountCurve, interest_rates: Callable[[date], float]) -> float:
         """
 
         """
@@ -253,8 +280,7 @@ class TermInterestRateSwap(CashflowCollection):
 
     def create_floating_leg_cashflow(self, interest_rate: Callable[[date], float]) -> Cashflow:
         """
-        Creates a cashflow of fixed leg payments from the provided interest rate curve, which
-        is assumed to be the
+        Creates a cashflow of floating leg payments from the provided interest rate callable.
 
         The interest_rate argument is assumed to be a general callable object which maps dates to
         floats representing interest rates. These could be either forward rates from a curve
@@ -277,7 +303,7 @@ class TermInterestRateSwap(CashflowCollection):
 
             payment_amount = accrual.accrual_factor * self.notional * interest_rate_fixing
 
-            payment = SwapPayment(payment_date=payment_date, payment=payment_amount, fixing_date=fixing_date)
+            payment = Payment(payment_date=payment_date, payment=payment_amount)
 
             floating_payments.append(payment)
 
@@ -285,7 +311,7 @@ class TermInterestRateSwap(CashflowCollection):
 
     def create_fixed_leg_cashflow(self) -> Cashflow:
         """
-
+        Creates a cashflow of fixed leg payments.
         """
         fixed_leg_accruals = self.generate_fixed_leg_accrual_schedule()
         fixed_payments = []
@@ -296,12 +322,10 @@ class TermInterestRateSwap(CashflowCollection):
                                                                self.payment_delay,
                                                                self.holiday_calendar)
 
-            payment = SwapPayment(payment_date=payment_date, payment=payment_amount, fixing_date=None)
+            payment = Payment(payment_date=payment_date, payment=payment_amount)
             fixed_payments.append(payment)
 
         return Cashflow(fixed_payments)
-
-
 
 
 class OvernightIndexSwap:
@@ -313,15 +337,17 @@ class OvernightIndexSwap:
 
 if __name__ == '__main__':
     from fixedIncome.src.scheduling_tools.holidays import US_FEDERAL_HOLIDAYS
+    from fixedIncome.src.curves.curve_enumerations import InterpolationMethod
+    from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 
     test_libor_swap = TermInterestRateSwap(
         float_index=CurveIndex.LIBOR_3M,
         direction=InterestRateSwapDirection.RECEIVER_FIXED,
         fixed_rate=0.055,
         notional=1_000_000,
-        start_accrual_date=date(2024, 1, 1),
-        end_accrual_date=date(2034, 1, 1),
         purchase_date=date(2024, 1, 1),
+        settlement_convention=SettlementConvention.T_PLUS_TWO_BUSINESS,
+        tenor='10Y',
         floating_leg_payment_frequency=PaymentFrequency.SEMI_ANNUAL,
         fixed_leg_payment_frequency=PaymentFrequency.QUARTERLY,
         floating_leg_day_count_convention=DayCountConvention.ACTUAL_OVER_360,
@@ -334,3 +360,11 @@ if __name__ == '__main__':
     test_libor_swap.generate_fixed_leg_accrual_schedule()
     test_libor_swap.generate_floating_leg_accrual_schedule()
 
+    start_val = KnotValuePair(date(2024, 1, 1), 0.05)
+    end_val = KnotValuePair(date(2034, 1, 1), 0.10)
+    test_curve = Curve([start_val, end_val],
+                       interpolation_method=InterpolationMethod.LINEAR,
+                       interpolation_day_count_convention=DayCountConvention.ACTUAL_OVER_360)
+
+    test_cashflow = test_libor_swap.create_floating_leg_cashflow(test_curve)
+    print(list(test_cashflow))
