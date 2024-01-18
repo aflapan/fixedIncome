@@ -1,10 +1,10 @@
 """
 This script contains classes for a Term interest rate swap and Overnight Interest Rate Swap.
 
-Unit tests contained in tests/tets_assets/test_rates_test_linear_rates/test_interest_rate_swap.py
+Unit tests contained in tests/test_assets/test_rates_test_linear_rates/test_interest_rate_swap.py
 """
 from enum import Enum
-from datetime import date, timedelta
+from datetime import date
 from dateutil.relativedelta import relativedelta
 from typing import NamedTuple, Optional, Callable
 import itertools
@@ -419,7 +419,7 @@ class OvernightIndexSwap(FixedToFloatInterestRateSwap):
 
         The accruals Accrual(date_{i}, date_{i+1}) are assumed to use the DayCountConvention Actual over 360.
         """
-        #TODO: Determine what to do about potentially-missing start/end dates.
+        #TODO: Determine what to do about potentially missing start/end dates.
         accrual_dates = Scheduler.generate_business_days(start_date=start_date,
                                                          end_date=end_date,
                                                          holiday_calendar=self.holiday_calendar)
