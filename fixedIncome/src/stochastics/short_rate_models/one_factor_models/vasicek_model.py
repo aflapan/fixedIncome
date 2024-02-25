@@ -58,6 +58,8 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
                                                             reversion_scale=reversion_speed,
                                                             volatility=volatility)
 
+        self.convexity_limit = -self.volatility**2 / (2 * self.reversion_speed**2)
+
         bm = BrownianMotion(start_date_time=start_date_time,
                             end_date_time=end_date_time)
 
@@ -101,7 +103,7 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         return solution
 
 
-    def conditional_variance(self, datetime_obj: datetime) -> float:
+    def short_rate_variance(self, datetime_obj: datetime) -> float:
         """
         Returns the conditional variance of the Vasicek Model, equal to sigma**2 / 2*a * (1- exp(-2 k * (t-t_0))).
         """
@@ -112,30 +114,54 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         shrinkage_factor = 1 - math.exp(-2 * self.reversion_speed * accrual)
         return self.volatility**2 / (2 * self.reversion_speed) * shrinkage_factor
 
-    def conditional_mean(self, initial_value_short_rate: float, datetime_obj: datetime) -> float:
+    def expected_short_rate(self,
+                            maturity_date: date | datetime,
+                            purchase_date: Optional[date | datetime] = None) -> float:
         """
         Returns the conditional mean of the Vasicek short rate given the initial value of the short rate r_0.
         """
-        accrual = DayCountCalculator.compute_accrual_length(self.start_date_time,
-                                                            datetime_obj,
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
+                                                            maturity_date,
                                                             self.day_count_convention)
         weight = math.exp(-self.reversion_speed * accrual)
-        return weight * initial_value_short_rate + (1 - weight) * self.long_term_mean
+        return weight * self(purchase_date) + (1 - weight) * self.long_term_mean
 
     # Affine model functions
 
-    def _create_bond_price_coeffs(self, maturity_date: date) -> None:
+    def _create_bond_price_coeffs(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> None:
         """
         Overrides the class method for setting the coefficients for calculating a zero-coupon bond price.
         """
-        accrual = DayCountCalculator.compute_accrual_length(self.start_date_time,
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
                                                             maturity_date,
                                                             self.day_count_convention)
         coefficient = -(1 - math.exp(-self.reversion_speed * accrual)) / self.reversion_speed
-        term1 = (self.long_term_mean - self.volatility**2/(2 * self.reversion_speed**2)) * (coefficient + accrual)
+        term1 = (self.long_term_mean + self.convexity_limit) * (coefficient + accrual)
         term2 = self.volatility**2 / (4 * self.reversion_speed) * coefficient**2
         intercept = -term1 - term2
         self.price_state_variable_coeffs = {'intercept': intercept, 'coefficient': coefficient}
+
+    def _calculate_bond_price_coeff_derivatives_wrt_maturity(self, purchase_date, maturity_date) -> dict[str, float]:
+        """
+        Returns a dictionary with the same keys ('intercept' and 'coefficient') as
+        the dictionary formed by self._create_bond_price_coeffs, but instead returns each bond price
+        coefficient's derivative with respect to maturity time T.
+        """
+        accrual = DayCountCalculator.compute_accrual_length(start_date=purchase_date,
+                                                            end_date=maturity_date,
+                                                            dcc=self.day_count_convention)
+
+        exp_factor = math.exp(-self.reversion_speed * accrual)
+        one_minus_exp = (1-exp_factor)
+        intercept_deriv = -one_minus_exp * (self.long_term_mean + one_minus_exp * self.convexity_limit)
+
+        return {'intercept': intercept_deriv, 'coefficient': -exp_factor}
 
     def _create_bond_yield_coeffs(self, maturity_date) -> None:
         """
@@ -146,8 +172,8 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
                                                             maturity_date,
                                                             self.day_count_convention)
         coefficient = -(1 - math.exp(-self.reversion_speed * accrual)) / self.reversion_speed
-        term1 = (self.long_term_mean - self.volatility**2 / (2 * self.reversion_speed**2)) * (coefficient + accrual)
-        term2 = self.volatility ** 2 / (4 * self.reversion_speed) * coefficient ** 2
+        term1 = (self.long_term_mean + self.convexity_limit) * (coefficient + accrual)
+        term2 = self.volatility ** 2 / (4 * self.reversion_speed) * coefficient**2
         intercept = (term1+term2)/accrual
         self.yield_state_variable_coeffs = {'intercept': intercept, 'coefficient': -coefficient/accrual}
 
@@ -162,14 +188,19 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         return math.exp(self.price_state_variable_coeffs['intercept']
                         + self.price_state_variable_coeffs['coefficient'] * initial_value_short_rate)
 
-    def zero_coupon_yield(self, initial_value_short_rate: float, maturity_date: date | datetime) -> float:
+    def zero_coupon_yield(self,
+                          maturity_date: date | datetime,
+                          purchase_date: Optional[date | datetime] = None) -> float:
         """
         Overrides the abstract class method
         Reference:  Pages 165-171 of Rebonato *Bond Pricing and Yield Curve Modeling*.
         """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
         self._create_bond_yield_coeffs(maturity_date)
         yield_value = self.yield_state_variable_coeffs['intercept'] \
-                      + self.yield_state_variable_coeffs['coefficient'] * initial_value_short_rate
+                      + self.yield_state_variable_coeffs['coefficient'] * self(purchase_date)
 
         return yield_value
 
@@ -197,11 +228,55 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         self._create_bond_price_coeffs(maturity_date)
         return -(self.price_state_variable_coeffs['coefficient'] / accrual) * self.volatility
 
+    def instantaneous_forward_rate(self,
+                                   maturity_date: date | datetime,
+                                   purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Returns the instantaneous forward rate of the Vasicek Model for a given maturity date T.
+        Given the affine price coefficients where P^T = exp ( A^T + B^T r_t), the instantaneous short rate
+        is defined to be:
+            -d/dT log P^T = -d/dT [ A^T + B^T r_t ]
+        """
+        if self.path is None:
+            raise ValueError('Path cannot both be None when calculating the instantaneous forward rate.')
+
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        short_rate = self(purchase_date)
+        derivatives = self._calculate_bond_price_coeff_derivatives_wrt_maturity(purchase_date = purchase_date,
+                                                                                maturity_date = maturity_date)
+        forward_rate = -derivatives['intercept'] - derivatives['coefficient'] * short_rate
+        return forward_rate
+
+    def average_expected_short_rate(self,
+                                    maturity_date: date | datetime,
+                                    purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Calculates the average from the purchase date t to the maturity
+        date T of the conditional short rate mean in the vasicek model, conditioned on information up to time t.
+        That this, this method calculates:
+
+           1/ (T-t) *  int_{t}^{T} E[ r_s | F_t] ds
+        where E[r_s | F_t] is the conditional expectation of the short rate at time s on information know at t, for s >= t.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        self._create_bond_price_coeffs(maturity_date=maturity_date, purchase_date=purchase_date)
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
+                                                            maturity_date,
+                                                            self.day_count_convention)
+
+        mean_times_accrual = -self.long_term_mean * (self.price_state_variable_coeffs['coefficient'] + accrual) \
+               + self.price_state_variable_coeffs['coefficient'] * self(purchase_date)
+
+        return -mean_times_accrual/accrual
 
     # Plotting
 
     def plot(self, show_fig: bool = False) -> None:
-        """ Produces a plot of  """
+        """ Produces a plot of the model short rate path. """
         initial_value = float(self.path[0,0])
         title_str = f'Vasicek Model Sample Path with Parameters\n' \
                     f'Mean {self.long_term_mean}; Volatility {self.volatility}; Reversion Speed {self.reversion_speed}'
@@ -209,8 +284,8 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         plt.title(title_str)
         date_range = pd.date_range(start=self.start_date_time, end=self.end_date_time, periods=len(self.path.flatten())).to_pydatetime()
         plt.plot(date_range, self.path.T * 100, linewidth=0.5, alpha=1)
-        plt.plot(date_range, [self.conditional_mean(initial_value, datetime_obj) * 100
-                              for datetime_obj in date_range], linestyle='dotted', color='tab:red')
+        plt.plot(date_range, [-self.expected_short_rate(datetime_obj) * 100 for datetime_obj in date_range],
+                 linestyle='dotted', color='tab:red')
         plt.axhline(self.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
         plt.ylabel('Short Rate (%)')
         plt.grid(alpha=0.25)
@@ -221,6 +296,7 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
 
 if __name__ == '__main__':
     from datetime import timedelta
+    from dateutil.relativedelta import relativedelta
     import itertools
     from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 
@@ -274,41 +350,21 @@ if __name__ == '__main__':
     accruals = [DayCountCalculator.compute_accrual_length(start_time, datetime_obj, DayCountConvention.ACTUAL_OVER_ACTUAL)
                 for datetime_obj in admissible_dates]
 
-    affine_yields = [100 * vm.zero_coupon_yield(initial_value_short_rate=INITIAL_SHORT_RATE,
-                                                maturity_date=date) for date in admissible_dates[1:]]
+    affine_yields = [100 * vm.zero_coupon_yield(maturity_date=date) for date in admissible_dates[1:]]
 
     plt.plot(admissible_dates[1:], affine_yields, color='tab:blue')
 
-    # Compute Yields for Conditional Mean
-    running_integral = 0.0
-    integral_vals = [running_integral]
-    for start_dt, end_dt in itertools.pairwise(admissible_dates):
-        start_rate = vm.conditional_mean(INITIAL_SHORT_RATE, start_dt)
-        end_rate = vm.conditional_mean(INITIAL_SHORT_RATE, end_dt)
-        min_rate, max_rate = min(start_rate, end_rate), max(start_rate, end_rate)
-        accrual = DayCountCalculator.compute_accrual_length(start_dt, end_dt, vm.day_count_convention)
-
-        if min_rate < 0:
-            next_trapezoid_val = max_rate * accrual + (min_rate - max_rate) * accrual / 2
-        else:
-            next_trapezoid_val = min_rate * accrual + (max_rate - min_rate) * accrual / 2
-        running_integral += next_trapezoid_val
-        integral_vals.append(running_integral)
-
-    price_for_conditional_mean = [math.exp(-integral_val) for integral_val in integral_vals]
-    yield_for_conditional_mean_short_rate = [-100 / acc * math.log(price)
-                                             for acc, price in zip(accruals[1:], price_for_conditional_mean[1:])]
-
-    plt.plot(admissible_dates[1:], yield_for_conditional_mean_short_rate, color='darkred')
+    plt.plot(admissible_dates[1:],
+             [vm.average_expected_short_rate(date_obj) * 100 for date_obj in admissible_dates[1:]],
+             color='darkred')
 
     plt.grid(alpha=0.25)
-    plt.title(f'Yield Convexity in the Vasicek Model\n'
-              f'Yields for Zero-Coupon Bonds and Yields Constructed by Pricing Bonds Using the Conditional Short Rate Mean;'
+    plt.title(f'Convexity in the Vasicek Model by Comparing Yields and the Conditional Short Rate Mean;'
               f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
     plt.ylabel('Yield (%)')
     plt.legend([
         'Yield',
-        'Yield Constructed on Conditional Short Rate Mean'],
+        'Conditional Short Rate Mean'],
                loc='lower left', frameon=False)
 
     ax2 = ax.twinx()
@@ -414,8 +470,10 @@ if __name__ == '__main__':
                           start_date_time=start_time,
                           end_date_time=end_time)
 
+        vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=1)
+
         admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
-        ax.plot(admissible_dates[1:], [vm.zero_coupon_yield(INITIAL_SHORT_RATE, date_obj) * 100
+        ax.plot(admissible_dates[1:], [vm.zero_coupon_yield(date_obj) * 100
                                        for date_obj in admissible_dates[1:]])
 
     ax.grid(alpha=0.25)
@@ -429,7 +487,89 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.show()
 
+    # Instantaneous forward rates
+    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+
+    SHORT_RATE_VOLATILITY = 0.008  # 80 bps
+    INITIAL_SHORT_RATE = 0.05
+    reversion_speed = 0.2
+    start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
+    end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+    years = [1, 5, 10, 20, 30]
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    vm = VasicekModel(long_term_mean=0.035,
+                      reversion_speed=reversion_speed,
+                      volatility=SHORT_RATE_VOLATILITY,
+                      start_date_time=start_time,
+                      end_date_time=end_time)
+
+    for year in years:
+        vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=year)
+        admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+        ax.plot(admissible_dates[1:],
+                [vm.instantaneous_forward_rate(maturity_date=date_obj + relativedelta(years=year),
+                                               purchase_date=date_obj) * 100
+                 for date_obj in admissible_dates[1:]],
+                linewidth=0.85)
+
+    plt.axhline((vm.long_term_mean + vm.convexity_limit) * 100, linestyle="--", linewidth=0.75, color="grey")
+
+    ax.legend([f'{years} Years' for years in years],
+              title='Forward Rate',
+              bbox_to_anchor=(1.0, 0.6), frameon=False)
+
+    plt.grid(alpha=0.25)
+    plt.title(f'Instantaneous Forward Rate Process Sample Paths in the Vasicek Model\n'
+               f'Model Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {reversion_speed}')
+    plt.tight_layout()
+    plt.show()
 
 
+    #--------------------------------------------------------------
+    reversion_level = 0.045
+    initital_short_rate = 0.02
+    short_rate_volatility = 0.0120
+    reversion_speed = 0.1
 
+    long_end = start_time + relativedelta(years=100)
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=long_end,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
 
+    vm = VasicekModel(long_term_mean=reversion_level,
+                      reversion_speed=reversion_speed,
+                      volatility=short_rate_volatility,
+                      start_date_time=start_time,
+                      end_date_time=long_end)
+
+    path = vm.generate_path(starting_value=initital_short_rate, set_path=True, seed=1)
+
+    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+    admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+
+    ax.plot(admissible_dates[1:],
+            [vm.average_expected_short_rate(maturity_date=date_obj) for date_obj in admissible_dates[1:]],
+            color='darkred',
+            linewidth=1.0)
+
+    ax.plot(admissible_dates[1:],
+            [vm.yield_convexity(maturity_date=date_obj) for date_obj in admissible_dates[1:]],
+            color='darkgrey',
+            linewidth=1.0)
+
+    ax.plot(admissible_dates[1:],
+            [vm.zero_coupon_yield(maturity_date=date_obj) for date_obj in admissible_dates[1:]],
+            color='tab:blue', linewidth=1.0)
+
+    plt.axhline(vm.convexity_limit, linestyle="--", linewidth=0.5, color="grey")
+    plt.axhline(vm.long_term_mean, linestyle="--", linewidth=0.5, color="darkred")
+
+    ax.legend([f'Conditional Short Rate Mean', 'Convexity', 'Yield'],
+              bbox_to_anchor=(1.0, 0.6), frameon=False)
+
+    plt.show()

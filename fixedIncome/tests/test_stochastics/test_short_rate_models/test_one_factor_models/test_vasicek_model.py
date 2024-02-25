@@ -4,7 +4,7 @@ fixedIncome.src.stochastics.short_rate_models.one_factor_models.vasicek_model.py
 """
 
 from datetime import datetime, timedelta
-import numpy as np
+import math
 import pandas as pd
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
@@ -13,7 +13,7 @@ from fixedIncome.src.stochastics.short_rate_models.one_factor_models.vasicek_mod
 
 
 start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-end_time = datetime(2043, 10, 15, 0, 0, 0, 0)
+end_time = datetime(2053, 10, 15, 0, 0, 0, 0)
 
 vm = VasicekModel(long_term_mean=0.04,
                   reversion_speed=2.0,
@@ -21,10 +21,26 @@ vm = VasicekModel(long_term_mean=0.04,
                   start_date_time=start_time,
                   end_date_time=end_time)
 
+starting_short_rate_value = 0.05
+vm.generate_path(starting_value=starting_short_rate_value, set_path=True, seed=2024)
+
 def test_conditional_mean() -> None:
-    """ Tests that the conditional mean is within a tolerance of the long term mean. """
-    PASS_THRESH = 1E-4
-    assert abs(vm.conditional_mean(0.10, datetime(2050, 12, 25)) - 0.04) < PASS_THRESH
+    """ Tests that the conditional mean is within the allowed tolerance of the theoretical conditional mean. """
+    PASS_THRESH = 1E-10
+
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    admissible_dates = (date_obj for date_obj in dates if date_obj < vm.end_date_time)
+
+    for date_obj in admissible_dates:
+        accrual = DayCountCalculator.compute_accrual_length(start_time, date_obj, vm.day_count_convention)
+        weight = math.exp(-vm.reversion_speed * accrual)
+        theoretical_val = starting_short_rate_value * weight + (1 - weight) * vm.long_term_mean
+        result = abs(theoretical_val - vm.expected_short_rate(date_obj)) < PASS_THRESH
+        assert result
 
 
 def test_model_evaluates_to_path_on_interpolating_dates() -> None:
@@ -64,3 +80,24 @@ def test_affine_yield_coeffs_are_transform_of_price_coeffs() -> None:
 
         assert abs(vm.price_state_variable_coeffs['intercept']/accrual + vm.yield_state_variable_coeffs['intercept']) < PASS_THRESH
         assert abs(vm.price_state_variable_coeffs['coefficient']/accrual + vm.yield_state_variable_coeffs['coefficient']) < PASS_THRESH
+
+
+def test_conditional_short_rate_plus_convexity_equals_yield() -> None:
+    """
+    This test ensures that the proper theoretical relationship between the conditional mean,
+    the convexity adjustment, and the yield exists for the Vasicek model. Namely, we must have:
+        Average conditional short rate + Convexity Adjustment = Time T yield.
+    """
+    PASS_THRESH = 1E-10
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+
+    assert all(abs(vm.average_expected_short_rate(maturity_date=date_obj)
+                   + vm.yield_convexity(maturity_date=date_obj)
+                   - vm.zero_coupon_yield(maturity_date=date_obj) ) < PASS_THRESH
+               for date_obj in admissible_dates[1:])
+
