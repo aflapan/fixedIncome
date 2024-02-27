@@ -5,14 +5,16 @@ Reference, *Fixed Income Securities, 4th Ed.* by Tuckman and Serrat, page 205.
 Unit tests are contained in
 fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models.test_vasicek_model.py
 """
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
 import pandas as pd
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 from typing import Optional
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
-from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel, DriftDiffusionPair
+from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel
+from fixedIncome.src.stochastics.base_process import DriftDiffusionPair
 from fixedIncome.src.stochastics.short_rate_models.affine_model_mixin import AffineModelMixin
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
@@ -48,7 +50,7 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
                  start_date_time,
                  end_date_time,
                  day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_OVER_ACTUAL,
-                 dt: float = 1/1_000) -> None:
+                 dt: timedelta | relativedelta = relativedelta(hours=1)) -> None:
         self.start_date_time = start_date_time
         self.end_date_time = end_date_time
         self.long_term_mean = long_term_mean
@@ -61,10 +63,10 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         self.convexity_limit = -self.volatility**2 / (2 * self.reversion_speed**2)
 
         bm = BrownianMotion(start_date_time=start_date_time,
-                            end_date_time=end_date_time)
+                            end_date_time=end_date_time,
+                            day_count_convention=day_count_convention)
 
         self.keys = ('short_rate',)
-
 
         super().__init__(drift_diffusion_collection={self.keys[0]: self.drift_diffusion_pair},
                          brownian_motion=bm,
@@ -85,18 +87,18 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         self._reset_paths_and_curves()
 
         drift_fxcn, diffusion_fxcn = self.drift_diffusion_pair
-        brownian_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed).flatten()
-        solution = np.empty((1,  len(brownian_increments)+1))
+        brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
+        solution = np.empty((brownian_increments.shape[0],  brownian_increments.shape[1]+1))
         current_val = float(starting_value)
         time = 0
-        for index, shock in enumerate(brownian_increments):
+        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments.T)):
             solution[0, index] = current_val
-            drift_increment = drift_fxcn(time, current_val) * self.dt
+            drift_increment = drift_fxcn(time, current_val) * dt
             diffusion_shock = diffusion_fxcn(time, current_val) * shock  # shock contains sqrt(dt) scaling
             current_val = current_val + drift_increment + diffusion_shock
-            time += self.dt
+            time += dt
 
-        solution[0, len(brownian_increments)] = current_val  # solution has one more slot
+        solution[0, brownian_increments.shape[1]] = current_val  # solution has one more slot
         if set_path:
             self._path = solution
 
@@ -315,7 +317,7 @@ if __name__ == '__main__':
                       end_date_time=end_time)
 
     path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
-    admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+    admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
 
     #vm.plot()
     #plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
@@ -526,50 +528,4 @@ if __name__ == '__main__':
     plt.title(f'Instantaneous Forward Rate Process Sample Paths in the Vasicek Model\n'
                f'Model Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {reversion_speed}')
     plt.tight_layout()
-    plt.show()
-
-
-    #--------------------------------------------------------------
-    reversion_level = 0.045
-    initital_short_rate = 0.02
-    short_rate_volatility = 0.0120
-    reversion_speed = 0.1
-
-    long_end = start_time + relativedelta(years=100)
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=long_end,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
-
-    vm = VasicekModel(long_term_mean=reversion_level,
-                      reversion_speed=reversion_speed,
-                      volatility=short_rate_volatility,
-                      start_date_time=start_time,
-                      end_date_time=long_end)
-
-    path = vm.generate_path(starting_value=initital_short_rate, set_path=True, seed=1)
-
-    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
-    admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
-
-    ax.plot(admissible_dates[1:],
-            [vm.average_expected_short_rate(maturity_date=date_obj) for date_obj in admissible_dates[1:]],
-            color='darkred',
-            linewidth=1.0)
-
-    ax.plot(admissible_dates[1:],
-            [vm.yield_convexity(maturity_date=date_obj) for date_obj in admissible_dates[1:]],
-            color='darkgrey',
-            linewidth=1.0)
-
-    ax.plot(admissible_dates[1:],
-            [vm.zero_coupon_yield(maturity_date=date_obj) for date_obj in admissible_dates[1:]],
-            color='tab:blue', linewidth=1.0)
-
-    plt.axhline(vm.convexity_limit, linestyle="--", linewidth=0.5, color="grey")
-    plt.axhline(vm.long_term_mean, linestyle="--", linewidth=0.5, color="darkred")
-
-    ax.legend([f'Conditional Short Rate Mean', 'Convexity', 'Yield'],
-              bbox_to_anchor=(1.0, 0.6), frameon=False)
-
     plt.show()

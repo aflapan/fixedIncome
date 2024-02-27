@@ -1,21 +1,17 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import numpy as np
 import math
-from typing import NamedTuple, Optional
-from collections.abc import Callable
+from typing import Optional
 from abc import abstractmethod
 import itertools
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+from fixedIncome.src.stochastics.base_process import DriftDiffusionPair
 from fixedIncome.src.stochastics.brownian_motion import datetime_to_path_call, BrownianMotion
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.curves.base_curve import DiscountCurve, KnotValuePair, Curve
 from fixedIncome.src.curves.curve_enumerations import CurveIndex, EndBehavior, InterpolationMethod
-
-class DriftDiffusionPair(NamedTuple):
-    drift: Callable[[float, ...], float]
-    diffusion: Callable[[float, ...], float]
 
 
 class ShortRateModel:
@@ -24,11 +20,12 @@ class ShortRateModel:
                  drift_diffusion_collection: dict[str, DriftDiffusionPair],
                  brownian_motion: BrownianMotion,
                  day_count_convention: DayCountConvention,
-                 dt: float = 1/1_000  # dt increment in units of years
+                 dt: timedelta | relativedelta = relativedelta(hours=1)
                  ) -> None:
         self.drift_diffusion_collection = drift_diffusion_collection
         self.brownian_motion = brownian_motion
         self.day_count_convention = day_count_convention
+        assert self.brownian_motion.day_count_convention == self.day_count_convention  # TODO: figure out how to pass one argument into the other
         self._dt = dt
         self._rate_index = 0  # row index of the self.path numpy array which corresponds to the short rate
                               # Subclass models will often generate multiple different intermediary rates/values
@@ -45,7 +42,7 @@ class ShortRateModel:
     def rate_index(self) -> int:
         return self._rate_index
     @property
-    def dt(self) -> float:
+    def dt(self) -> timedelta | relativedelta:
         return self._dt
 
     @property
@@ -76,6 +73,7 @@ class ShortRateModel:
         values = datetime_to_path_call(datetime_obj,
                                        start_date_time=self.brownian_motion.start_date_time,
                                        end_date_time=self.brownian_motion.end_date_time,
+                                       day_count_convention=self.day_count_convention,
                                        path=self.path)
         return values
 
@@ -111,7 +109,7 @@ class ShortRateModel:
         if datetimes is None:
             datetimes = Scheduler.generate_dates_by_increments(start_date=start_date_time,
                                                                end_date=end_date_time,
-                                                               increment=relativedelta(seconds=self.dt * DayCountCalculator.SECONDS_PER_YEAR),
+                                                               increment=self.dt,
                                                                max_dates=1_000_000)
         running_integral = 0.0
         interpolation_values = [0.0]
@@ -148,7 +146,7 @@ class ShortRateModel:
         if datetimes is None:
             datetimes = Scheduler.generate_dates_by_increments(start_date=start_date_time,
                                                                end_date=end_date_time,
-                                                               increment=relativedelta(seconds=self.dt * DayCountCalculator.SECONDS_PER_YEAR),
+                                                               increment=self.dt,
                                                                max_dates=1_000_000)
 
         if self._integrated_path is None:
@@ -183,7 +181,7 @@ class ShortRateModel:
         if datetimes is None:
             datetimes = Scheduler.generate_dates_by_increments(start_date=start_date_time,
                                                                end_date=end_date_time,
-                                                               increment=relativedelta(seconds=self.dt * DayCountCalculator.SECONDS_PER_YEAR),
+                                                               increment=self.dt,
                                                                max_dates=1_000_000)
 
         if self._integrated_path is None:

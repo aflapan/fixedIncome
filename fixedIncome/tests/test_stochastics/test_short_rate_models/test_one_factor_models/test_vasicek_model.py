@@ -26,14 +26,14 @@ vm.generate_path(starting_value=starting_short_rate_value, set_path=True, seed=2
 
 def test_conditional_mean() -> None:
     """ Tests that the conditional mean is within the allowed tolerance of the theoretical conditional mean. """
-    PASS_THRESH = 1E-10
+    PASS_THRESH = 1E-14
 
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
                                                    max_dates=1_000_000)
 
-    admissible_dates = (date_obj for date_obj in dates if date_obj < vm.end_date_time)
+    admissible_dates = (date_obj for date_obj in dates if date_obj <= vm.end_date_time)
 
     for date_obj in admissible_dates:
         accrual = DayCountCalculator.compute_accrual_length(start_time, date_obj, vm.day_count_convention)
@@ -48,7 +48,7 @@ def test_model_evaluates_to_path_on_interpolating_dates() -> None:
     Tests the callable feature of the model correctly gives the path values
     when the datetime object used as an argument is an interpolation date.
     """
-    PASS_THRESH = 1E-10
+    PASS_THRESH = 1E-13
     date_range = pd.date_range(start=start_time, end=end_time, periods=len(vm.path)).to_pydatetime()
 
     assert all(abs(float(vm(date_time_obj)) - vm.path[0, index]) < PASS_THRESH
@@ -72,7 +72,7 @@ def test_affine_yield_coeffs_are_transform_of_price_coeffs() -> None:
     accruals = [DayCountCalculator.compute_accrual_length(start_time, datetime_obj, DayCountConvention.ACTUAL_OVER_ACTUAL)
                 for datetime_obj in admissible_dates]
 
-    PASS_THRESH = 1E-10
+    PASS_THRESH = 1E-13
 
     for accrual, date_obj in zip(accruals[1:], admissible_dates[1:]):
         vm._create_bond_price_coeffs(date_obj)
@@ -88,7 +88,7 @@ def test_conditional_short_rate_plus_convexity_equals_yield() -> None:
     the convexity adjustment, and the yield exists for the Vasicek model. Namely, we must have:
         Average conditional short rate + Convexity Adjustment = Time T yield.
     """
-    PASS_THRESH = 1E-10
+    PASS_THRESH = 1E-13
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),

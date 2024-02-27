@@ -1,8 +1,12 @@
+"""
+
+"""
 from typing import Optional
 from datetime import date, datetime
 import numpy as np
 from fixedIncome.src.stochastics.brownian_motion import datetime_to_path_call, BrownianMotion
-from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import DriftDiffusionPair
+from fixedIncome.src.stochastics.base_process import DriftDiffusionPair
+
 
 def geometric_brownian_motion_drift_diffusion(drift: float, volatility: float) -> DriftDiffusionPair:
     """
