@@ -279,19 +279,23 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
 
     def plot(self, show_fig: bool = False) -> None:
         """ Produces a plot of the model short rate path. """
-        initial_value = float(self.path[0,0])
         title_str = f'Vasicek Model Sample Path with Parameters\n' \
                     f'Mean {self.long_term_mean}; Volatility {self.volatility}; Reversion Speed {self.reversion_speed}'
         plt.figure(figsize=(15, 6))
         plt.title(title_str)
-        date_range = pd.date_range(start=self.start_date_time, end=self.end_date_time, periods=len(self.path.flatten())).to_pydatetime()
-        plt.plot(date_range, self.path.T * 100, linewidth=0.5, alpha=1)
-        plt.plot(date_range, [-self.expected_short_rate(datetime_obj) * 100 for datetime_obj in date_range],
+        date_range = Scheduler.generate_dates_by_increments(start_date=self.start_date_time,
+                                                            end_date=self.end_date_time,
+                                                            increment=self.dt,
+                                                            max_dates=1_000_000)
+
+        plt.plot(date_range, [self(datetime_obj) * 100 for datetime_obj in date_range], linewidth=0.5, alpha=1)
+        plt.plot(date_range, [self.expected_short_rate(datetime_obj) * 100 for datetime_obj in date_range],
                  linestyle='dotted', color='tab:red')
+
         plt.axhline(self.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
         plt.ylabel('Short Rate (%)')
         plt.grid(alpha=0.25)
-        plt.legend(['Sample Short Rate Path', 'Conditional Mean', 'Long-Term Mean'], frameon=False)
+        plt.legend(['Sample Short Rate Path', 'Expected Short Rate', 'Reversion Level'], frameon=False)
         if show_fig:
             plt.show()
 
@@ -299,7 +303,6 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
 if __name__ == '__main__':
     from datetime import timedelta
     from dateutil.relativedelta import relativedelta
-    import itertools
     from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 
     # ----------------------------------------------------------------
@@ -311,7 +314,7 @@ if __name__ == '__main__':
                                                    max_dates=1_000_000)
 
     vm = VasicekModel(long_term_mean=0.04,
-                      reversion_speed=0.1,
+                      reversion_speed=0.5,
                       volatility=0.02,
                       start_date_time=start_time,
                       end_date_time=end_time)
@@ -319,9 +322,9 @@ if __name__ == '__main__':
     path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
     admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
 
-    #vm.plot()
-    #plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
-    #plt.show()
+    vm.plot()
+    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
+    plt.show()
 
     # DISCOUNT CURVES
     #NUM_CURVES = 20
@@ -343,7 +346,14 @@ if __name__ == '__main__':
 
     # CONVEXITY
 
+    vm = VasicekModel(long_term_mean=0.04,
+                      reversion_speed=0.1,
+                      volatility=0.02,
+                      start_date_time=start_time,
+                      end_date_time=end_time)
+
     INITIAL_SHORT_RATE = 0.08
+    vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=1)
     vm_avg_short_rate = np.zeros((1, len(admissible_dates)))
     vm_avg_df = np.zeros((1, len(admissible_dates)))
     vm_avg_integrated_path = np.zeros((1, len(admissible_dates)))
@@ -361,12 +371,12 @@ if __name__ == '__main__':
              color='darkred')
 
     plt.grid(alpha=0.25)
-    plt.title(f'Convexity in the Vasicek Model by Comparing Yields and the Conditional Short Rate Mean;'
+    plt.title(f'Convexity in the Vasicek Model by Comparing Yields and the Expected Short Rate Average Over Time;'
               f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
     plt.ylabel('Yield (%)')
     plt.legend([
         'Yield',
-        'Conditional Short Rate Mean'],
+        'Average Expected Short Rate'],
                loc='lower left', frameon=False)
 
     ax2 = ax.twinx()
@@ -528,4 +538,5 @@ if __name__ == '__main__':
     plt.title(f'Instantaneous Forward Rate Process Sample Paths in the Vasicek Model\n'
                f'Model Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {reversion_speed}')
     plt.tight_layout()
+    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Instantaneous_Forward_Rate_Processes.png')
     plt.show()
