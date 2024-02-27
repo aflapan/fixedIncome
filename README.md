@@ -4,14 +4,6 @@ This is a library for fixed income quant analytics, including yield curve calibr
 The below plot represents some of the current capabilities of the package. 
 
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Short_Rate.png)
-![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Discount_Curves.png)
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Convexity.png)
+![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Instantaneous_Forward_Rate_Processes.png)
 
-
-This project is currently under construction, and future work will include (in order of immediacy):
-
-1. Functionality to download data from the U.S. Treasury Direct API and calibrate a yield curve automatically on real data.
-2. Implementations of KeyRate and PCA hedging strategies and simulations. 
-3. Alternative forms of yield curve calibration, including interpolations in different spaces and least-squares fitting for various basis function expansions.
-4. Different asset classes, include outright SOFR and Fed Fund interest rate swaps with their corresponding curves. 
-5. If time permits, a global solver for interest rate curves.
