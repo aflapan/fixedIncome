@@ -3,8 +3,6 @@ This is a library for fixed income quant analytics, including yield curve calibr
 
 The below plot represents some of the current capabilities of the package. 
 
-![Thirty Year Bond PV](https://github.com/aflapan/fixedIncome/blob/master/docs/images/thrity_year_pv.png)
-
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Short_Rate.png)
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Discount_Curves.png)
 ![Vasicek Short Rate Sample PAth](https://github.com/aflapan/fixedIncome/blob/master/docs/images/Vasicek_Convexity.png)
