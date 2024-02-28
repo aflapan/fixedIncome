@@ -158,7 +158,7 @@ if __name__ == '__main__':
     starting_value = np.array([1.0, 1.0])
     path = diffusion.generate_path(starting_value=starting_value, set_path=True, seed=1)
     scaled_eigenvalues = 1 / np.sqrt(eigen_values)
-    scaled_eigenvalues /= max(scaled_eigenvalues)
+    #scaled_eigenvalues /= max(scaled_eigenvalues)
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     ax.set_aspect('equal', adjustable='box')
@@ -181,6 +181,8 @@ if __name__ == '__main__':
     plt.ylabel('Dimension 2')
     ax.legend(bbox_to_anchor=(1.0, 0.6), frameon=False)
     plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig('../../../../fixedIncome/docs/images/two_dimensional_mean_reverting_process.png')
     plt.show()
 
 
