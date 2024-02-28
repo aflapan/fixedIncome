@@ -7,18 +7,17 @@ fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models
 """
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
-import pandas as pd
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 from typing import Optional
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
 from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel
-from fixedIncome.src.stochastics.base_process import DriftDiffusionPair
+from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
 from fixedIncome.src.stochastics.short_rate_models.affine_model_mixin import AffineModelMixin
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.scheduling_tools.scheduler import Scheduler
+
 
 
 def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volatility: float) -> DriftDiffusionPair:
@@ -91,7 +90,7 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
         solution = np.empty((brownian_increments.shape[0],  brownian_increments.shape[1]+1))
         current_val = float(starting_value)
         time = 0
-        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments.T)):
+        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments.T)):  # dt increments are pairwise differences of accruals
             solution[0, index] = current_val
             drift_increment = drift_fxcn(time, current_val) * dt
             diffusion_shock = diffusion_fxcn(time, current_val) * shock  # shock contains sqrt(dt) scaling

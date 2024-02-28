@@ -6,7 +6,7 @@ from typing import Optional
 from abc import abstractmethod
 import itertools
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
-from fixedIncome.src.stochastics.base_process import DriftDiffusionPair
+from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
 from fixedIncome.src.stochastics.brownian_motion import datetime_to_path_call, BrownianMotion
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountConvention
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
