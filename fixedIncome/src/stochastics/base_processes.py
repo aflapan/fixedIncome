@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 from typing import Optional, NamedTuple, Callable
 import numpy as np
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion, datetime_to_path_call
+from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 
 class DriftDiffusionPair(NamedTuple):
     """
@@ -25,7 +26,8 @@ class DiffusionProcess(abc.Callable):
                  dt: timedelta|relativedelta = relativedelta(hours=1)) -> None:
 
         self.brownian_motion = brownian_motion
-        self._start_date_time = brownian_motion.start_date_time
+        self._start_date_time = self.brownian_motion.start_date_time
+        self._day_count_convention = self.brownian_motion.day_count_convention
         self._end_date_time = brownian_motion.end_date_time
         self._dt = dt
 
@@ -54,19 +56,24 @@ class DiffusionProcess(abc.Callable):
         return self._dt
 
     @property
+    def day_count_convention(self) -> DayCountConvention:
+        return self._day_count_convention
+
+    @property
     def path(self):
         return self._path
 
 
     def __call__(self, datetime_obj: datetime) -> np.array:
         """
-        Shortcut to allow the user to directly call the MeanRevertingProcess object directly rather
+        Shortcut to allow the user to directly call the DiffusionProcess object directly rather
         than index and interpolate the path.
         """
         return datetime_to_path_call(datetime_obj,
                                      start_date_time=self.start_date_time,
                                      end_date_time=self.end_date_time,
-                                     path=self.path)
+                                     path=self.path,
+                                     day_count_convention=self.day_count_convention)
 
     def generate_path(self,
                       starting_value: np.ndarray | float,
@@ -78,7 +85,7 @@ class DiffusionProcess(abc.Callable):
 
         brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
         solution = np.empty((brownian_increments.shape[0], brownian_increments.shape[1] + 1))
-        current_val = starting_value.flatten()
+        current_val = starting_value
         time = 0
         for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments.T)):
             solution[:, index] = current_val
@@ -99,7 +106,11 @@ class DiffusionProcess(abc.Callable):
 
         return solution
 
-
+    def set_dt(self, new_dt: float) -> None:
+        """ Sets a new increment dt. The old path is set to None because any path
+        is no longer valid if """
+        self._path = None  # path generated from old dt no longer valid
+        self._dt = new_dt
 
 class DiffusionJumpProcess(DiffusionProcess):
     pass
@@ -110,12 +121,15 @@ class DiffusionJumpProcess(DiffusionProcess):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import math
+    from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 
     reversion_level = np.array([1.0, 2.0])
 
     reversion_directions = np.array([[1.0/math.sqrt(2), 1.0/math.sqrt(2)],
                                      [1.0/math.sqrt(2), -1.0/math.sqrt(2)]])
     reversion_mat = reversion_directions @ np.array([[1.0, 0.0], [0.0, 0.1]]) @ reversion_directions.T
+    print(reversion_mat)
+
     eigen_values, eigenvectors = np.linalg.eig(reversion_mat)
 
     rho = 0.0
@@ -131,6 +145,12 @@ if __name__ == '__main__':
                         end_date_time=end_time,
                         dimension=2,
                         correlation_matrix=None)
+
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
     def drift_1(t, Xt):
         return reversion_mat[0, :] @ (reversion_level - Xt)
 
@@ -158,7 +178,6 @@ if __name__ == '__main__':
     starting_value = np.array([1.0, 1.0])
     path = diffusion.generate_path(starting_value=starting_value, set_path=True, seed=1)
     scaled_eigenvalues = 1 / np.sqrt(eigen_values)
-    #scaled_eigenvalues /= max(scaled_eigenvalues)
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     ax.set_aspect('equal', adjustable='box')
@@ -171,9 +190,8 @@ if __name__ == '__main__':
              label='Reversion Matrix Principal Direction\nScaled Inversely to Root Eigenvalue')
 
     eigen_vec = eigenvectors[:, 1] * scaled_eigenvalues[1] + reversion_level
-    #scaled_eigenvalue = 1
-    plt.plot((reversion_level[0], eigen_vec[0] ),
-             (reversion_level[1], eigen_vec[1] ), color='tab:red', linewidth=2)
+    plt.plot((reversion_level[0], eigen_vec[0]),
+             (reversion_level[1], eigen_vec[1]), color='tab:red', linewidth=2)
 
     plt.plot(*tuple(reversion_level), 'D', markersize=8, color='tab:red', label='Reversion Level')
     plt.title('Two-Dimensional Mean-Reverting Process')
@@ -188,9 +206,11 @@ if __name__ == '__main__':
 
     plt.figure(figsize=(12, 6))
     plt.title('Two Dimensional Mean-Reverting Process Coordinate Paths')
-    plt.plot(path[0,:], linewidth=0.75, color='tab:blue')
-    plt.axhline(reversion_level[0], linestyle='dashed', color='tab:blue')
-    plt.plot(path[1,:], linewidth=0.75, color='mediumaquamarine')
-    plt.axhline(reversion_level[1], linestyle='dashed', color='mediumaquamarine')
+    plt.plot(dates, [diffusion(datetime_obj)[0] for datetime_obj in dates], linewidth=0.75, color='tab:blue', label='Coordinate 1 Path')
+    plt.axhline(reversion_level[0], linestyle='dashed', color='tab:blue', label='Coordinate 1 Reversion Level')
+
+    plt.plot(dates, [diffusion(datetime_obj)[1] for datetime_obj in dates], linewidth=0.75, color='mediumaquamarine', label='Coordinate 2 Path')
+    plt.axhline(reversion_level[1], linestyle='dashed', color='mediumaquamarine', label='Coordinate 2 Reversion Level')
     plt.grid(alpha=0.25)
+    plt.legend(frameon=False)
     plt.show()

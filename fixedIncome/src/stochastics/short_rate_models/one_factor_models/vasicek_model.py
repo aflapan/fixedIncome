@@ -28,30 +28,27 @@ def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volat
     m is the long-term mean for the interest rate, and
     sigma is the volatility.
     """
-    def drift_fxcn(time: float, current_value: float) -> float:
-        return reversion_scale * (long_term_mean - current_value)
+    def drift_fxcn(time: float, current_value: float) -> np.array:
+        return np.array([reversion_scale * (long_term_mean - current_value)])
 
-    def diffusion_fxcn(time: float, current_value: float) -> float:
-        return volatility
+    def diffusion_fxcn(time: float, current_value: float) -> np.array:
+        return np.array([volatility])
 
     return DriftDiffusionPair(drift=drift_fxcn, diffusion=diffusion_fxcn)
 
 
-class VasicekModel(AffineModelMixin, ShortRateModel):
+class VasicekModel(ShortRateModel, AffineModelMixin):
     """
     A class for generating sample paths of the Vasicek short rate model.
     """
 
     def __init__(self,
-                 long_term_mean,
-                 reversion_speed,
-                 volatility,
-                 start_date_time,
-                 end_date_time,
-                 day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_OVER_ACTUAL,
+                 long_term_mean: float,
+                 reversion_speed: float,
+                 volatility: float,
+                 brownian_motion: BrownianMotion,
                  dt: timedelta | relativedelta = relativedelta(hours=1)) -> None:
-        self.start_date_time = start_date_time
-        self.end_date_time = end_date_time
+
         self.long_term_mean = long_term_mean
         self.reversion_speed = reversion_speed
         self.volatility = volatility
@@ -59,49 +56,11 @@ class VasicekModel(AffineModelMixin, ShortRateModel):
                                                             reversion_scale=reversion_speed,
                                                             volatility=volatility)
 
+        super().__init__(drift_diffusion_collection={'short rate': self.drift_diffusion_pair},
+                         brownian_motion=brownian_motion,
+                         dt=dt)
+
         self.convexity_limit = -self.volatility**2 / (2 * self.reversion_speed**2)
-
-        bm = BrownianMotion(start_date_time=start_date_time,
-                            end_date_time=end_date_time,
-                            day_count_convention=day_count_convention)
-
-        self.keys = ('short_rate',)
-
-        super().__init__(drift_diffusion_collection={self.keys[0]: self.drift_diffusion_pair},
-                         brownian_motion=bm,
-                         day_count_convention=day_count_convention,
-                         dt=dt)  # inherits __call__ from ShortRate class
-
-    def show_drift_diffusion_collection_keys(self) -> tuple[str]:
-        """
-        Interface method which returns the tuple of keys
-        """
-        return self.keys
-
-    def generate_path(
-            self, starting_value: np.ndarray | float, set_path: bool = True, seed: Optional[int] = None
-    ) -> np.ndarray:
-        """ Generates the Vasicek solution path through the Euler Discretization method. """
-
-        self._reset_paths_and_curves()
-
-        drift_fxcn, diffusion_fxcn = self.drift_diffusion_pair
-        brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
-        solution = np.empty((brownian_increments.shape[0],  brownian_increments.shape[1]+1))
-        current_val = float(starting_value)
-        time = 0
-        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments.T)):  # dt increments are pairwise differences of accruals
-            solution[0, index] = current_val
-            drift_increment = drift_fxcn(time, current_val) * dt
-            diffusion_shock = diffusion_fxcn(time, current_val) * shock  # shock contains sqrt(dt) scaling
-            current_val = current_val + drift_increment + diffusion_shock
-            time += dt
-
-        solution[0, brownian_increments.shape[1]] = current_val  # solution has one more slot
-        if set_path:
-            self._path = solution
-
-        return solution
 
 
     def short_rate_variance(self, datetime_obj: datetime) -> float:
@@ -307,6 +266,11 @@ if __name__ == '__main__':
     # ----------------------------------------------------------------
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2053, 10, 15, 0, 0, 0, 0)
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=1)
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
@@ -315,8 +279,7 @@ if __name__ == '__main__':
     vm = VasicekModel(long_term_mean=0.04,
                       reversion_speed=0.5,
                       volatility=0.02,
-                      start_date_time=start_time,
-                      end_date_time=end_time)
+                      brownian_motion=brownian_motion)
 
     path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
     admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
@@ -348,8 +311,7 @@ if __name__ == '__main__':
     vm = VasicekModel(long_term_mean=0.04,
                       reversion_speed=0.1,
                       volatility=0.02,
-                      start_date_time=start_time,
-                      end_date_time=end_time)
+                      brownian_motion=brownian_motion)
 
     INITIAL_SHORT_RATE = 0.08
     vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=1)
@@ -398,6 +360,10 @@ if __name__ == '__main__':
 
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=1)
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
@@ -408,8 +374,7 @@ if __name__ == '__main__':
         vm = VasicekModel(long_term_mean=0.04,
                           reversion_speed=speed,
                           volatility=SHORT_RATE_VOLATILITY,
-                          start_date_time=start_time,
-                          end_date_time=end_time)
+                          brownian_motion=brownian_motion)
 
         admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
         ax.plot(admissible_dates[1:], [vm.yield_volatility(date_obj) for date_obj in admissible_dates[1:]])
@@ -432,6 +397,11 @@ if __name__ == '__main__':
 
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=1)
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
@@ -441,8 +411,7 @@ if __name__ == '__main__':
         vm = VasicekModel(long_term_mean=0.035,
                             reversion_speed=speed,
                             volatility=SHORT_RATE_VOLATILITY,
-                            start_date_time=start_time,
-                            end_date_time=end_time)
+                            brownian_motion=brownian_motion)
 
         admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
         ax.plot(admissible_dates[1:], [vm.yield_convexity(date_obj) * 10_000
@@ -468,6 +437,11 @@ if __name__ == '__main__':
 
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=1)
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
@@ -478,8 +452,7 @@ if __name__ == '__main__':
         vm = VasicekModel(long_term_mean=0.035,
                           reversion_speed=speed,
                           volatility=SHORT_RATE_VOLATILITY,
-                          start_date_time=start_time,
-                          end_date_time=end_time)
+                          brownian_motion=brownian_motion)
 
         vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=1)
 
@@ -506,7 +479,13 @@ if __name__ == '__main__':
     reversion_speed = 0.2
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=1)
+
     years = [1, 5, 10, 20, 30]
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
@@ -515,8 +494,7 @@ if __name__ == '__main__':
     vm = VasicekModel(long_term_mean=0.035,
                       reversion_speed=reversion_speed,
                       volatility=SHORT_RATE_VOLATILITY,
-                      start_date_time=start_time,
-                      end_date_time=end_time)
+                      brownian_motion=brownian_motion)
 
     for year in years:
         vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=year)
