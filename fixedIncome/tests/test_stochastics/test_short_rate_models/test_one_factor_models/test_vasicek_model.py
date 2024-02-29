@@ -9,17 +9,21 @@ import pandas as pd
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
 from fixedIncome.src.stochastics.short_rate_models.one_factor_models.vasicek_model import VasicekModel
 
 
 start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
 end_time = datetime(2053, 10, 15, 0, 0, 0, 0)
 
+brownian_motion = BrownianMotion(start_date_time=start_time,
+                                 end_date_time=end_time,
+                                 dimension=1)
+
 vm = VasicekModel(long_term_mean=0.04,
                   reversion_speed=2.0,
                   volatility=0.02,
-                  start_date_time=start_time,
-                  end_date_time=end_time)
+                  brownian_motion=brownian_motion)
 
 starting_short_rate_value = 0.05
 vm.generate_path(starting_value=starting_short_rate_value, set_path=True, seed=2024)
@@ -98,6 +102,6 @@ def test_conditional_short_rate_plus_convexity_equals_yield() -> None:
 
     assert all(abs(vm.average_expected_short_rate(maturity_date=date_obj)
                    + vm.yield_convexity(maturity_date=date_obj)
-                   - vm.zero_coupon_yield(maturity_date=date_obj) ) < PASS_THRESH
+                   - vm.zero_coupon_yield(maturity_date=date_obj)) < PASS_THRESH
                for date_obj in admissible_dates[1:])
 

@@ -12,14 +12,18 @@ from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConve
 
 class DriftDiffusionPair(NamedTuple):
     """
-    A class to
+    A class to encapsulate a drift-diffusion pair of functions for a diffusion process coordinate.
+    Both functions take time as the first argument and a flattened numpy array representing
+    the current diffusion process values.
     """
     drift: Callable[[float, np.array], np.array]
     diffusion: Callable[[float, np.array], np.array]
 
 
 class DiffusionProcess(abc.Callable):
-
+    """
+    A base class
+    """
     def __init__(self,
                  drift_diffusion_collection: dict[str: DriftDiffusionPair],
                  brownian_motion: BrownianMotion,
@@ -81,6 +85,7 @@ class DiffusionProcess(abc.Callable):
                       seed: Optional[int] = None
                       ) -> np.ndarray:
         """
+
         """
 
         brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
@@ -111,6 +116,7 @@ class DiffusionProcess(abc.Callable):
         is no longer valid if """
         self._path = None  # path generated from old dt no longer valid
         self._dt = new_dt
+
 
 class DiffusionJumpProcess(DiffusionProcess):
     pass
@@ -148,7 +154,7 @@ if __name__ == '__main__':
 
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
-                                                   increment=timedelta(1),
+                                                   increment=relativedelta(hours=1),
                                                    max_dates=1_000_000)
 
     def drift_1(t, Xt):
