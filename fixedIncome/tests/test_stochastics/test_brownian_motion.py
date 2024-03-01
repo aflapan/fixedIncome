@@ -1,7 +1,7 @@
 """
 A suit of unit tests for fixedIncome.src.stochastics.brownian_motion.py
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
@@ -24,7 +24,7 @@ def test_brownian_motion_evaluates_to_path_values_when_called_on_interpolating_d
                         dimension=1,
                         correlation_matrix=None)
 
-    bm.generate_path(dt=1.0, seed=1)
+    bm.generate_path(dt=timedelta(hours=1), seed=1)
 
     date_range = pd.date_range(start=start_time, end=end_time, periods=bm.path.shape[1]).to_pydatetime()
 
@@ -48,7 +48,7 @@ def test_correlation_of_brownian_increments_is_within_error_of_provided_matrix()
                         dimension=2,
                         correlation_matrix=correlation_matrix)
 
-    bm.generate_path(dt=0.01, seed=1)
+    bm.generate_path(dt=timedelta(hours=1), seed=1)
 
     path_increments = np.diff(bm.path, axis=1)
     np.allclose(correlation_matrix, np.corrcoef(path_increments))

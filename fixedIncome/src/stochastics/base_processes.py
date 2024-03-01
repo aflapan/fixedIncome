@@ -117,10 +117,11 @@ class DiffusionProcess(abc.Callable):
         self._path = None  # path generated from old dt no longer valid
         self._dt = new_dt
 
-
-class DiffusionJumpProcess(DiffusionProcess):
+class JumpProcess():
     pass
 
+class DiffusionJumpProcess(DiffusionProcess, JumpProcess):
+    pass
 
 
 
@@ -190,12 +191,19 @@ if __name__ == '__main__':
     plt.plot(path[0, :], path[1, :], linewidth=0.5, alpha=1, label='Sample Path')
     #plt.plot(*tuple(starting_value), 'x', markersize=8, color='crimson')
 
-    eigen_vec = eigenvectors[:, 0] * scaled_eigenvalues[0] + reversion_level
+    eigen_vec = reversion_level + eigenvectors[:, 0] * scaled_eigenvalues[0]
     plt.plot((reversion_level[0], eigen_vec[0]),
              (reversion_level[1], eigen_vec[1]), color='tab:red', linewidth=2,
              label='Reversion Matrix Principal Direction\nScaled Inversely to Root Eigenvalue')
+    eigen_vec = reversion_level- eigenvectors[:, 0] * scaled_eigenvalues[0]
+    plt.plot((reversion_level[0], eigen_vec[0]),
+             (reversion_level[1], eigen_vec[1]), color='tab:red', linewidth=2)
 
-    eigen_vec = eigenvectors[:, 1] * scaled_eigenvalues[1] + reversion_level
+
+    eigen_vec = reversion_level + eigenvectors[:, 1] * scaled_eigenvalues[1]
+    plt.plot((reversion_level[0], eigen_vec[0]),
+             (reversion_level[1], eigen_vec[1]), color='tab:red', linewidth=2)
+    eigen_vec = reversion_level - eigenvectors[:, 1] * scaled_eigenvalues[1]
     plt.plot((reversion_level[0], eigen_vec[0]),
              (reversion_level[1], eigen_vec[1]), color='tab:red', linewidth=2)
 
