@@ -49,8 +49,8 @@ def datetime_to_path_call(
                                                                  end_date=datetime_obj,
                                                                  dcc=day_count_convention)
 
-    interpolation_float = (num_steps - 1) * time_since_start / time_diff
-    interpolated_lower_index = math.floor(interpolation_float)
+    interpolation_float = round((num_steps - 1) * time_since_start / time_diff, 10)  # rounding due to floating point
+    interpolated_lower_index = math.floor(interpolation_float)                       # arithmetic error
     interpolated_upper_index = math.ceil(interpolation_float)
 
     if interpolated_lower_index == interpolated_upper_index:
