@@ -126,6 +126,7 @@ def test_bond_pv_does_not_change_for_key_rate_beyond_maturity() -> None:
     Simply stated, the dv01 of the us_treasury_instruments with respect to a key rate is 0 if the
     us_treasury_instruments has no exposure to the key rate.
     """
+    PASS_THRESH = 1E-10
 
     twenty_yr_kr = KeyRate(day_count_convention=DayCountConvention.ACTUAL_OVER_ACTUAL,
                            key_rate_date=date(2043, 2, 15),
@@ -137,11 +138,12 @@ def test_bond_pv_does_not_change_for_key_rate_beyond_maturity() -> None:
                            prior_date=date(2043, 2, 15),
                            next_date=None)
 
-    pass_thresh = 1e-8
-    twenty_yr_key_rate_dv01 = yield_curve.dv01(ten_yr, twenty_yr_kr)
-    thirty_yr_key_rate_dv01 = yield_curve.dv01(ten_yr, thirty_yr_kr)
+    pv_no_bump = yield_curve.present_value(ten_yr)
+    pv_twenty_year_bump = yield_curve.present_value(ten_yr, twenty_yr_kr)
+    pv_thirty_year_bump = yield_curve.present_value(ten_yr, thirty_yr_kr)
 
-    assert abs(twenty_yr_key_rate_dv01) < pass_thresh and abs(thirty_yr_key_rate_dv01) < pass_thresh
+    assert abs(pv_no_bump - pv_twenty_year_bump) < PASS_THRESH
+    assert abs(pv_no_bump - pv_thirty_year_bump) < PASS_THRESH
 
 def test_calibrated_yield_curve_is_constant_for_zero_coupon_bonds_fixed_yield() -> None:
     """
