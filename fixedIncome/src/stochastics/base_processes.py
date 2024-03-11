@@ -111,11 +111,25 @@ class DiffusionProcess(abc.Callable):
 
         return solution
 
+    def _reset_paths_and_curves(self) -> None:
+        """
+        Helper function to set all the paths to None.
+        """
+        self._path = None
+
     def set_dt(self, new_dt: float) -> None:
         """ Sets a new increment dt. The old path is set to None because any path
         is no longer valid if """
-        self._path = None  # path generated from old dt no longer valid
+        self._reset_paths_and_curves() # path generated from old dt no longer valid
         self._dt = new_dt
+
+    def show_drift_diffusion_collection_keys(self) -> str:
+        """
+        An interface method to have the model display a tuple of
+        all keys which index the drift and diffusion collection
+        to give an individual drift-diffusion pair of functions.
+        """
+        return '\n'.join(self.drift_diffusion_collection.keys())
 
 class JumpProcess():
     pass

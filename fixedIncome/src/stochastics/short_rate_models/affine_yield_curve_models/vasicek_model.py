@@ -3,7 +3,7 @@ This script contains the Vasicek Model for the short rate.
 Reference, *Fixed Income Securities, 4th Ed.* by Tuckman and Serrat, page 205.
 
 Unit tests are contained in
-fixedIncome.tests.test_stochastics.test_short_rate_models.test_one_factor_models.test_vasicek_model.py
+fixedIncome.tests.test_stochastics.test_short_rate_models.test_affine_yield_curve_models.test_vasicek_model.py
 """
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
@@ -12,6 +12,7 @@ import math
 import matplotlib.pyplot as plt
 from typing import Optional
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
+from fixedIncome.src.stochastics.base_processes import DiffusionProcess
 from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel
 from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
 from fixedIncome.src.stochastics.short_rate_models.affine_model_mixin import AffineModelMixin
@@ -19,8 +20,7 @@ from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConve
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
 
-
-def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volatility: float) -> DriftDiffusionPair:
+def vasicek_drift_diffusion(reversion_level: float, reversion_scale: float, volatility: float) -> DriftDiffusionPair:
     """
     Function to auto-generate the drift and diffusion functions for the Vasicek interest rate
     model. The model has the SDE dr = k * (m - r) dt + sigma dWt where
@@ -29,7 +29,7 @@ def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volat
     sigma is the volatility.
     """
     def drift_fxcn(time: float, current_value: float) -> np.array:
-        return np.array([reversion_scale * (long_term_mean - current_value)])
+        return np.array([reversion_scale * (reversion_level - current_value)])
 
     def diffusion_fxcn(time: float, current_value: float) -> np.array:
         return np.array([volatility])
@@ -39,26 +39,30 @@ def vasicek_drift_diffusion(long_term_mean: float, reversion_scale: float, volat
 
 class VasicekModel(ShortRateModel, AffineModelMixin):
     """
-    A class for generating sample paths of the Vasicek short rate model.
+    A class for generating sample paths of the one-dimensional Vasicek short rate model with short rate dynamics
+        dr_t = k(theta - r_t)dt + sigma dW_t
     """
 
     def __init__(self,
-                 long_term_mean: float,
+                 reversion_level: float,
                  reversion_speed: float,
                  volatility: float,
                  brownian_motion: BrownianMotion,
                  dt: timedelta | relativedelta = relativedelta(hours=1)) -> None:
 
-        self.long_term_mean = long_term_mean
+        self.long_term_mean = reversion_level
         self.reversion_speed = reversion_speed
         self.volatility = volatility
-        self.drift_diffusion_pair = vasicek_drift_diffusion(long_term_mean=long_term_mean,
+        self.drift_diffusion_pair = vasicek_drift_diffusion(reversion_level=reversion_level,
                                                             reversion_scale=reversion_speed,
                                                             volatility=volatility)
 
-        super().__init__(drift_diffusion_collection={'short rate': self.drift_diffusion_pair},
-                         brownian_motion=brownian_motion,
-                         dt=dt)
+        diffusion_process = DiffusionProcess(drift_diffusion_collection={'short rate': self.drift_diffusion_pair},
+                                             brownian_motion=brownian_motion,
+                                             dt=dt)
+
+        super().__init__(short_rate_transformation=lambda short_rate: short_rate,
+                         state_variables_diffusion_process=diffusion_process)
 
         self.convexity_limit = -self.volatility**2 / (2 * self.reversion_speed**2)
 
@@ -258,6 +262,44 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
             plt.show()
 
 
+class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
+    """
+    A class to generate sample paths and yield curves
+
+    d X_t = K(theta - X_t)dt + S dW_t
+    and r_t = mu + <g, X_t>.
+
+    Reference, Chapter 18 of Rebonato's *Bond Pricing and Yield Curve Modelling*, pages 299 -328.
+    """
+
+    def __init__(self,
+                 short_rate_intercept: float,
+                 short_rate_coefficients: np.array,
+                 reversion_level: np.array,
+                 reversion_matrix: np.ndarray,
+                 volatility_matrix: np.ndarray,
+                 brownian_motion: BrownianMotion,
+                 dt: timedelta | relativedelta = relativedelta(hours=1)
+                 ) -> None:
+
+        assert brownian_motion.dimension == len(volatility_matrix)
+        assert brownian_motion.dimension == len(reversion_level)
+        assert brownian_motion.dimension == len(reversion_matrix)
+
+        self.short_rate_intercept = short_rate_intercept
+        self.short_rate_coefficients = short_rate_coefficients
+        self.reversion_level = reversion_level
+        self.reversion_matrix = reversion_matrix
+        self.volatility_matrix = volatility_matrix
+
+        super().__init__(state_variable_drift_diffusion_collection=
+                         {f'state space variable {i}': DriftDiffusionPair(drift= lambda t, Xt: self.reversion_matrix[i, :] @ (self.reversion_level - Xt),
+                                                                          diffusion=lambda t, Xt: self.volatility_matrix[i, :])
+                          for i in range(brownian_motion.dimension)},
+                         brownian_motion=brownian_motion,
+                         dt=dt)
+
+
 if __name__ == '__main__':
     from datetime import timedelta
     from dateutil.relativedelta import relativedelta
@@ -276,14 +318,13 @@ if __name__ == '__main__':
                                                    increment=timedelta(1),
                                                    max_dates=1_000_000)
 
-    vm = VasicekModel(long_term_mean=0.04,
+    vm = VasicekModel(reversion_level=0.04,
                       reversion_speed=0.5,
                       volatility=0.02,
                       brownian_motion=brownian_motion)
 
-    path = vm.generate_path(starting_value=0.08, set_path=True, seed=1)
+    path = vm.generate_path(starting_state_space_values=np.array([0.08]), set_path=True, seed=1)
     admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
-
     vm.plot()
     plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
     plt.show()
@@ -292,7 +333,7 @@ if __name__ == '__main__':
     #NUM_CURVES = 20
     #plt.figure(figsize=(13, 5))
     #for seed in range(NUM_CURVES):
-    #    vm.generate_path(starting_value=0.08, set_path=True, seed=seed)
+    #    vm.generate_path(starting_state_space_values=0.08, set_path=True, seed=seed)
     #    vm_df_curve = vm.discount_curve()
     #    discount_factors = [vm_df_curve(date_obj) for date_obj in admissible_dates]
     #    plt.plot(admissible_dates, discount_factors, color='tab:blue', alpha=1, linewidth=0.5)
@@ -300,7 +341,7 @@ if __name__ == '__main__':
 
     #plt.grid(alpha=0.25)
     #plt.title(f'Discount Curves from Continuously-Compounding {NUM_CURVES} Vasicek Model Short Rate Paths\n'
-    #          f'with Model Parameters Mean {vm.long_term_mean}; '
+    #          f'with Model Parameters Mean {vm.reversion_level}; '
     #          f'Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
     #plt.ylabel('Discount Factor')
     #plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Discount_Curves.png')
@@ -308,13 +349,13 @@ if __name__ == '__main__':
 
     # CONVEXITY
 
-    vm = VasicekModel(long_term_mean=0.04,
+    vm = VasicekModel(reversion_level=0.04,
                       reversion_speed=0.1,
                       volatility=0.02,
                       brownian_motion=brownian_motion)
 
     INITIAL_SHORT_RATE = 0.08
-    vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=1)
+    vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=1)
     vm_avg_short_rate = np.zeros((1, len(admissible_dates)))
     vm_avg_df = np.zeros((1, len(admissible_dates)))
     vm_avg_integrated_path = np.zeros((1, len(admissible_dates)))
@@ -371,7 +412,7 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(1, 1, figsize=(11, 6))
     for speed in reversion_speeds:
-        vm = VasicekModel(long_term_mean=0.04,
+        vm = VasicekModel(reversion_level=0.04,
                           reversion_speed=speed,
                           volatility=SHORT_RATE_VOLATILITY,
                           brownian_motion=brownian_motion)
@@ -408,10 +449,10 @@ if __name__ == '__main__':
                                                    max_dates=1_000_000)
     fig, ax = plt.subplots(1, 1, figsize=(11, 6))
     for speed in reversion_speeds:
-        vm = VasicekModel(long_term_mean=0.035,
-                            reversion_speed=speed,
-                            volatility=SHORT_RATE_VOLATILITY,
-                            brownian_motion=brownian_motion)
+        vm = VasicekModel(reversion_level=0.035,
+                          reversion_speed=speed,
+                          volatility=SHORT_RATE_VOLATILITY,
+                          brownian_motion=brownian_motion)
 
         admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
         ax.plot(admissible_dates[1:], [vm.yield_convexity(date_obj) * 10_000
@@ -449,12 +490,12 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(1, 1, figsize=(11, 6))
     for speed in reversion_speeds:
-        vm = VasicekModel(long_term_mean=0.035,
+        vm = VasicekModel(reversion_level=0.035,
                           reversion_speed=speed,
                           volatility=SHORT_RATE_VOLATILITY,
                           brownian_motion=brownian_motion)
 
-        vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=1)
+        vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=1)
 
         admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
         ax.plot(admissible_dates[1:], [vm.zero_coupon_yield(date_obj) * 100
@@ -491,13 +532,13 @@ if __name__ == '__main__':
                                                    increment=timedelta(1),
                                                    max_dates=1_000_000)
 
-    vm = VasicekModel(long_term_mean=0.035,
+    vm = VasicekModel(reversion_level=0.035,
                       reversion_speed=reversion_speed,
                       volatility=SHORT_RATE_VOLATILITY,
                       brownian_motion=brownian_motion)
 
     for year in years:
-        vm.generate_path(starting_value=INITIAL_SHORT_RATE, set_path=True, seed=year)
+        vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=year)
         admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
         ax.plot(admissible_dates[1:],
                 [vm.instantaneous_forward_rate(maturity_date=date_obj + relativedelta(years=year),
@@ -517,3 +558,4 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Instantaneous_Forward_Rate_Processes.png')
     plt.show()
+

@@ -1,6 +1,6 @@
 """
 This module contains the unit tests for
-fixedIncome.src.stochastics.short_rate_models.one_factor_models.vasicek_model.py
+fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.vasicek_model.py
 """
 
 from datetime import datetime, timedelta
@@ -10,7 +10,7 @@ from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
-from fixedIncome.src.stochastics.short_rate_models.one_factor_models.vasicek_model import VasicekModel
+from fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.vasicek_model import VasicekModel
 
 
 start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
@@ -20,13 +20,13 @@ brownian_motion = BrownianMotion(start_date_time=start_time,
                                  end_date_time=end_time,
                                  dimension=1)
 
-vm = VasicekModel(long_term_mean=0.04,
+vm = VasicekModel(reversion_level=0.04,
                   reversion_speed=2.0,
                   volatility=0.02,
                   brownian_motion=brownian_motion)
 
 starting_short_rate_value = 0.05
-vm.generate_path(starting_value=starting_short_rate_value, set_path=True, seed=2024)
+vm.generate_path(starting_state_space_values=starting_short_rate_value, set_path=True, seed=2024)
 
 def test_conditional_mean() -> None:
     """ Tests that the conditional mean is within the allowed tolerance of the theoretical conditional mean. """
@@ -105,3 +105,19 @@ def test_conditional_short_rate_plus_convexity_equals_yield() -> None:
                    - vm.zero_coupon_yield(maturity_date=date_obj)) < PASS_THRESH
                for date_obj in admissible_dates[1:])
 
+def affine_coefficients_are_zero_at_maturity() -> None:
+    """
+    Tests that the affine model coefficients for the Vaiscek Model are zero for the bond maturity date.
+    """
+    PASS_THRESH = 1E-13
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    admissible_dates = (date_obj for date_obj in dates if date_obj <= vm.end_date_time)
+
+    for date_obj in admissible_dates:
+        vm._create_bond_price_coeffs(maturity_date=date_obj, purchase_date=date_obj)
+        assert abs(vm.price_state_variable_coeffs['intercept']) < PASS_THRESH
+        assert abs(vm.price_state_variable_coeffs['coefficient']) < PASS_THRESH

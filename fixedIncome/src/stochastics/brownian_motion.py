@@ -3,6 +3,7 @@ This script contains a class for generating multi-dimensional Brownian Motion pa
 
 Unit tests are contained in fixedIncome.tests.test_stochastics.test_brownian_motion.py
 """
+import itertools
 
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
@@ -11,7 +12,7 @@ import math
 import numpy as np
 from typing import Optional
 from collections.abc import Callable
-from itertools import pairwise
+import itertools
 import pandas as pd
 
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
@@ -130,11 +131,9 @@ class BrownianMotion(Callable):
         if datetimes[-1] < self.end_date_time:
             datetimes.append(self.end_date_time)
 
-        accruals = (DayCountCalculator.compute_accrual_length(self.start_date_time,
-                                                              datetime_obj,
-                                                              self.day_count_convention)
-                    for datetime_obj in datetimes)
-        dt_increments = np.array([end-start for start, end in pairwise(accruals)])
+        dt_increments = np.array([DayCountCalculator.compute_accrual_length(start, end, self.day_count_convention)
+                         for start, end in itertools.pairwise(datetimes)])
+
 
         num_steps = len(dt_increments)
         np.random.seed(seed=seed)

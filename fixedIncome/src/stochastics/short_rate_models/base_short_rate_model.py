@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import numpy as np
 import math
-from typing import Optional
+from typing import Optional, Callable
 from abc import abstractmethod
 import itertools
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
@@ -17,20 +17,24 @@ from fixedIncome.src.stochastics.base_processes import DiffusionProcess
 class ShortRateModel(DiffusionProcess):
 
     def __init__(self,
-                 drift_diffusion_collection: dict[str, DriftDiffusionPair],
-                 brownian_motion: BrownianMotion,
-                 dt: timedelta | relativedelta = relativedelta(hours=1)
+                 short_rate_transformation: Callable[[np.array], float],
+                 state_variables_diffusion_process: DiffusionProcess
                  ) -> None:
 
-        super().__init__(drift_diffusion_collection=drift_diffusion_collection,
-                         brownian_motion=brownian_motion,
-                         dt=dt)
+        self.short_rate_transformation = short_rate_transformation
+        self.state_variables_diffusion_process = state_variables_diffusion_process
+        super().__init__(drift_diffusion_collection=self.state_variables_diffusion_process.drift_diffusion_collection,
+                         brownian_motion=self.state_variables_diffusion_process.brownian_motion,
+                         dt=self.state_variables_diffusion_process.dt)
 
-        assert 'short rate' in [key.lower() for key in self.drift_diffusion_collection.keys()]
-
+        self._short_rate_path = None
         self._integrated_path = None
         self._continuously_compounded_accrual_path = None
         self._discount_curve = None
+
+    @property
+    def short_rate_path(self) -> np.array:
+        return self._short_rate_path
 
     @property
     def integrated_path(self) -> np.array:
@@ -40,26 +44,45 @@ class ShortRateModel(DiffusionProcess):
     def discount_curve(self) -> Optional[DiscountCurve]:
         return self._discount_curve
 
+    def __call__(self, datetime_obj) -> float:
+        """
+        Returns the shortrate for the corresponding datetime.
+        The short rate is the provided transformation of the underlying state variables.
+        """
+        return self.short_rate_transformation(super().__call__(datetime_obj))
+
+    def generate_path(self,
+                      starting_state_space_values: np.ndarray | float,
+                      set_path: bool = True,
+                      seed: Optional[int] = None
+                      ) -> np.array:
+        """
+        A function which generates the short rate sample path from the underlying
+        state variable diffusion sample paths.
+        """
+        self._reset_paths_and_curves()
+        super().generate_path(starting_value=starting_state_space_values,
+                              set_path=set_path,
+                              seed=seed)
+        self._short_rate_path = np.zeros(shape=(self.path.shape[1],))
+        for index in range(self.path.shape[1]):
+            self._short_rate_path[index] = self.short_rate_transformation(self.path[:, index])
+
+
     def _reset_paths_and_curves(self) -> None:
         """
         Helper function to set all the paths to None.
         """
-        self._path = None
+        super()._reset_paths_and_curves()  # set the underlying state variable paths to None
+        self._short_rate_path = None
         self._integrated_path = None
         self._continuously_compounded_accrual_path = None
         self._discount_curve = None
 
-    def show_drift_diffusion_collection_keys(self) -> list[str]:
-        """
-        An interface method to have the model display a tuple of
-        all keys which index the drift and diffusion collection
-        to give an individual drift-diffusion pair of functions.
-        """
-        return list(self.drift_diffusion_collection.keys())
-
     def generate_integrated_path(self, datetimes: Optional[list[datetime | date]] = None) -> np.array:
         """
-
+        Method for creating a path which represents the integral of the short rate path
+        t -> int_{t_0}^{t} r_s  ds
         """
         if self.path is None:
             raise ValueError("Path is currently None. First generate a sample path of spot rates.")
@@ -76,7 +99,7 @@ class ShortRateModel(DiffusionProcess):
         interpolation_values = [0.0]
 
         for start_dt, end_dt in itertools.pairwise(datetimes):
-            start_rate, end_rate = self(start_dt)[self.rate_index], self(end_dt)[self.rate_index]
+            start_rate, end_rate = self(start_dt), self(end_dt)
             min_rate, max_rate = min(start_rate, end_rate), max(start_rate, end_rate)
             new_time_accrual = DayCountCalculator.compute_accrual_length(start_date_time, end_dt, self.day_count_convention)
             accrual = new_time_accrual - old_time_accrual
