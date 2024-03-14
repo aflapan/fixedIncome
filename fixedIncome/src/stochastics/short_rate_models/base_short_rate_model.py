@@ -49,7 +49,8 @@ class ShortRateModel(DiffusionProcess):
         Returns the shortrate for the corresponding datetime.
         The short rate is the provided transformation of the underlying state variables.
         """
-        return self.short_rate_transformation(super().__call__(datetime_obj))
+        state_variables = self.state_variables_diffusion_process(datetime_obj)
+        return self.short_rate_transformation(state_variables)
 
     def generate_path(self,
                       starting_state_space_values: np.ndarray | float,
@@ -60,13 +61,15 @@ class ShortRateModel(DiffusionProcess):
         A function which generates the short rate sample path from the underlying
         state variable diffusion sample paths.
         """
-        self._reset_paths_and_curves()
-        super().generate_path(starting_value=starting_state_space_values,
-                              set_path=set_path,
-                              seed=seed)
-        self._short_rate_path = np.zeros(shape=(self.path.shape[1],))
-        for index in range(self.path.shape[1]):
-            self._short_rate_path[index] = self.short_rate_transformation(self.path[:, index])
+        #self._reset_paths_and_curves()
+        self.state_variables_diffusion_process.generate_path(starting_value=starting_state_space_values,
+                                                             set_path=set_path,
+                                                             seed=seed)
+
+        path_length = self.state_variables_diffusion_process.path.shape[1]
+        self._path = np.zeros(shape=(path_length,))
+        for index in range(path_length):
+            self._path[index] = self.short_rate_transformation(self.state_variables_diffusion_process.path[:, index])
 
 
     def _reset_paths_and_curves(self) -> None:

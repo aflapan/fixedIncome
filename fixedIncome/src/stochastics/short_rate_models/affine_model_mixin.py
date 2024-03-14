@@ -13,7 +13,7 @@ class AffineModelMixin:
     yield_state_variable_coeffs: Optional[dict] = None
 
     @abstractmethod
-    def _create_bond_price_coeffs(self, maturity_date: date) -> None:
+    def _create_bond_price_coeffs(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> None:
         """
         Private helper method to set the coefficients beta_0, ..., beta_p of the state variables
         used to price zero coupon bonds using the formula:
@@ -22,7 +22,7 @@ class AffineModelMixin:
         """
 
     @abstractmethod
-    def _create_bond_yield_coeffs(self, maturity_date) -> None:
+    def _create_bond_yield_coeffs(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> None:
         """
         Private helper method to set the coefficients beta_0, ..., beta_p of the state variables
         used to calculate zero coupon bond yields:
@@ -31,20 +31,20 @@ class AffineModelMixin:
         """
 
     @abstractmethod
-    def zero_coupon_bond_price(self, maturity_date: date, *args, **kwargs) -> float:
+    def zero_coupon_bond_price(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
         Calculates the price of a zero coupon bond.
         """
 
     @abstractmethod
-    def zero_coupon_bond_yield(self, maturity_date: date, *args, **kwargs) -> float:
+    def zero_coupon_bond_yield(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
         Calculates the time-t yield of a T-maturity bond, where t < T.
         The continuously-compounded yield is defined to be -log(P_t^T) / (T-t).
         """
 
     @abstractmethod
-    def instantaneous_forward_rate(self, forward_rate_datetime: date | datetime) -> float:
+    def instantaneous_forward_rate(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
         Returns the time-t instantaneous forward rate based on the affine yield model parameters.
         """

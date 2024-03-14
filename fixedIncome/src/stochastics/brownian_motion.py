@@ -3,6 +3,7 @@ This script contains a class for generating multi-dimensional Brownian Motion pa
 
 Unit tests are contained in fixedIncome.tests.test_stochastics.test_brownian_motion.py
 """
+import bisect
 import itertools
 
 import matplotlib.pyplot as plt
@@ -24,6 +25,7 @@ def datetime_to_path_call(
         start_date_time: datetime,
         end_date_time: datetime,
         day_count_convention: DayCountConvention,
+        datetime_grid: list[datetime],
         path: Optional[np.ndarray] = None
 ) -> float | np.ndarray:
     """
@@ -40,31 +42,29 @@ def datetime_to_path_call(
         raise ValueError(f'Provided datetime {str(datetime_obj)} is outside of'
                          f'the range {str(start_date_time)} to {str(end_date_time)}.')
 
-    num_steps = path.shape[1] if len(path.shape) >= 2 else len(path)
+    #num_steps = path.shape[1] if len(path.shape) >= 2 else len(path)
 
-    time_diff = DayCountCalculator.compute_accrual_length(start_date=start_date_time,
-                                                          end_date=end_date_time,
-                                                          dcc=day_count_convention)
+    lower_datetime_index = bisect.bisect_left(datetime_grid, x=datetime_obj)
 
-    time_since_start = DayCountCalculator.compute_accrual_length(start_date=start_date_time,
-                                                                 end_date=datetime_obj,
-                                                                 dcc=day_count_convention)
+    if datetime_obj == datetime_grid[lower_datetime_index]:
+        return path[:, lower_datetime_index]
 
-    interpolation_float = round((num_steps - 1) * time_since_start / time_diff, 10)  # rounding due to floating point
-    interpolated_lower_index = math.floor(interpolation_float)                       # arithmetic error
-    interpolated_upper_index = math.ceil(interpolation_float)
+    upper_datetime_index = lower_datetime_index + 1
+    time_since_last_grid_point = DayCountCalculator.compute_accrual_length(start_date=datetime_grid[lower_datetime_index],
+                                                                           end_date=datetime_obj,
+                                                                           dcc=day_count_convention)
 
-    if interpolated_lower_index == interpolated_upper_index:
-        return path[:, interpolated_lower_index]
+    time_to_next_grid_point = DayCountCalculator.compute_accrual_length(start_date=datetime_obj,
+                                                                        end_date=datetime_grid[upper_datetime_index],
+                                                                        dcc=day_count_convention)
 
-    prev_value = path[:, interpolated_lower_index]
-    next_value = path[:, interpolated_upper_index]
+    interpolation_factor = time_to_next_grid_point / (time_to_next_grid_point + time_since_last_grid_point)
 
-    time_since_prev_index = interpolation_float - interpolated_lower_index
-    time_to_next_index = interpolated_upper_index - interpolation_float
-    total_time = time_since_prev_index + time_to_next_index
+    prev_value = path[:, lower_datetime_index]
+    next_value = path[:, upper_datetime_index]
 
-    return (time_since_prev_index * next_value + prev_value * time_to_next_index) / total_time
+
+    return  next_value * interpolation_factor + prev_value * (1 - interpolation_factor)
 
 class BrownianMotion(Callable):
     """
@@ -84,6 +84,8 @@ class BrownianMotion(Callable):
         assert dimension, dimension == self.correlation_matrix.shape
         self.lower_triangular_mat = np.linalg.cholesky(self.correlation_matrix)
         self._path = None
+        self._datetimes = None
+        self._dt_increments = None
         self.day_count_convention = day_count_convention
 
     @property
@@ -102,6 +104,14 @@ class BrownianMotion(Callable):
     def path(self):
         return self._path
 
+    @property
+    def dt_increments(self):
+        return self._dt_increments
+
+    @property
+    def datetimes(self):
+        return self._datetimes
+
     def __call__(self, datetime_obj: datetime) -> np.array:
         """
         Shortcut to allow the user to directly call the BrownianMotion datetime rather
@@ -111,6 +121,7 @@ class BrownianMotion(Callable):
                                      start_date_time=self.start_date_time,
                                      end_date_time=self.end_date_time,
                                      day_count_convention=self.day_count_convention,
+                                     datetime_grid=self.datetimes,
                                      path=self.path)
 
     def generate_increments(
@@ -124,22 +135,22 @@ class BrownianMotion(Callable):
         and multiplying the resulting lower-triangular matrix to the uncorrelated brownian motion increments.
         See Brigo and Mercurio's *Interest Rate Models-Theory and Practice Second Ed.*, page 31.
         """
-        datetimes = Scheduler.generate_dates_by_increments(start_date=self.start_date_time,
+        self._datetimes = Scheduler.generate_dates_by_increments(start_date=self.start_date_time,
                                                            end_date=self.end_date_time,
                                                            increment=dt,
                                                            max_dates=1_000_000)
-        if datetimes[-1] < self.end_date_time:
-            datetimes.append(self.end_date_time)
+        if self.datetimes[-1] < self.end_date_time:
+            self.datetimes.append(self.end_date_time)
 
-        dt_increments = np.array([DayCountCalculator.compute_accrual_length(start, end, self.day_count_convention)
-                         for start, end in itertools.pairwise(datetimes)])
+        self._dt_increments = np.array([DayCountCalculator.compute_accrual_length(start, end, self.day_count_convention)
+                         for start, end in itertools.pairwise(self.datetimes)])
 
 
-        num_steps = len(dt_increments)
+        num_steps = len(self.dt_increments)
         np.random.seed(seed=seed)
-        brownian_increments = np.random.standard_normal((self.dimension, num_steps)) * np.sqrt(dt_increments)
+        brownian_increments = np.random.standard_normal((self.dimension, num_steps)) * np.sqrt(self.dt_increments)
         brownian_increments = self.lower_triangular_mat @ brownian_increments  # induce correlation
-        return brownian_increments, dt_increments
+        return brownian_increments, self.dt_increments
 
     def generate_path(self, dt: timedelta | relativedelta, set_path: bool = True, seed: Optional[int] = None) -> np.array:
         """
@@ -147,7 +158,7 @@ class BrownianMotion(Callable):
 
         dt is a float whose scale is years, that is dt=1 corresponds to dt increments of a single year.
         """
-        brownian_increments, _ = self.generate_increments(dt, seed=seed)
+        brownian_increments, dt_increments = self.generate_increments(dt, seed=seed)
         brownian_paths = np.zeros((self.dimension, brownian_increments.shape[1] + 1))
         brownian_paths[:, 1:] = brownian_increments.cumsum(axis=1)
 
@@ -156,12 +167,12 @@ class BrownianMotion(Callable):
 
         return brownian_paths
 
-    def generate_num_steps_from_dt(self, dt: float) -> int:
-        """ """
-        time_diff = self.end_date_time - self.start_date_time
-        time_diff_in_years = math.ceil(DayCountCalculator.time_fraction_in_years(time_diff))
-        num_steps = math.ceil(time_diff_in_years / dt)
-        return num_steps
+    #def generate_num_steps_from_dt(self, dt: float) -> int:
+    #    """ """
+    #    time_diff = self.end_date_time - self.start_date_time
+    #    time_diff_in_years = math.ceil(DayCountCalculator.time_fraction_in_years(time_diff))
+    #    num_steps = math.ceil(time_diff_in_years / dt)
+    #    return num_steps
 
     def plot(self):
         plural = 's' if self.dimension > 1 else ''

@@ -77,6 +77,7 @@ class DiffusionProcess(abc.Callable):
                                      start_date_time=self.start_date_time,
                                      end_date_time=self.end_date_time,
                                      path=self.path,
+                                     datetime_grid=self.brownian_motion.datetimes,
                                      day_count_convention=self.day_count_convention)
 
     def generate_path(self,

@@ -142,15 +142,18 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
         self.yield_state_variable_coeffs = {'intercept': intercept, 'coefficient': -coefficient/accrual}
 
 
-    def zero_coupon_bond_price(self, initial_value_short_rate: float, maturity_date: date | datetime) -> float:
+    def zero_coupon_bond_price(self, maturity_date: date | datetime, purchase_date: Optional[date | datetime] = None) -> float:
         """
-        Overrides the abstract class method
+        Overrides the abstract class method.
 
         Reference:  Pages 165-171 of Rebonato *Bond Pricing and Yield Curve Modeling*.
         """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
         self._create_bond_price_coeffs(maturity_date)
         return math.exp(self.price_state_variable_coeffs['intercept']
-                        + self.price_state_variable_coeffs['coefficient'] * initial_value_short_rate)
+                        + self.price_state_variable_coeffs['coefficient'] * self(purchase_date))
 
     def zero_coupon_yield(self,
                           maturity_date: date | datetime,
@@ -266,9 +269,11 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
     """
     A class to generate sample paths and yield curves
 
-    d X_t = K(theta - X_t)dt + S dW_t
-    and r_t = mu + <g, X_t>.
+        d X_t = K(theta - X_t)dt + S dW_t
+        and r_t = mu + <g, X_t>.
 
+    where K is
+    -------------------------------------------------------------
     Reference, Chapter 18 of Rebonato's *Bond Pricing and Yield Curve Modelling*, pages 299 -328.
     """
 
@@ -286,18 +291,101 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         assert brownian_motion.dimension == len(reversion_level)
         assert brownian_motion.dimension == len(reversion_matrix)
 
+
         self.short_rate_intercept = short_rate_intercept
         self.short_rate_coefficients = short_rate_coefficients
         self.reversion_level = reversion_level
         self.reversion_matrix = reversion_matrix
         self.volatility_matrix = volatility_matrix
 
-        super().__init__(state_variable_drift_diffusion_collection=
-                         {f'state space variable {i}': DriftDiffusionPair(drift= lambda t, Xt: self.reversion_matrix[i, :] @ (self.reversion_level - Xt),
-                                                                          diffusion=lambda t, Xt: self.volatility_matrix[i, :])
-                          for i in range(brownian_motion.dimension)},
-                         brownian_motion=brownian_motion,
-                         dt=dt)
+        self.reversion_matrix_eigenvalues, self.reversion_matrix_eigenvectors = np.linalg.eig(self.reversion_matrix)
+
+        diffusion_process = DiffusionProcess(
+            drift_diffusion_collection={
+                f'state space variable {i}': DriftDiffusionPair(
+                    drift=lambda t, X: self.reversion_matrix[i, :] @ (self.reversion_level - X),
+                    diffusion=lambda t, X: self.volatility_matrix[i, :]) for i in range(brownian_motion.dimension)
+            },
+            brownian_motion=brownian_motion,
+            dt=dt)
+
+        super().__init__(
+            short_rate_transformation=lambda state_variables: self.short_rate_intercept + self.short_rate_coefficients @ state_variables,
+            state_variables_diffusion_process=diffusion_process
+        )
+
+    def zero_coupon_bond_yield(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        self._create_bond_price_coeffs(maturity_date, purchase_date)
+        state_variables = self.state_variables_diffusion_process(purchase_date)
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+        yield_to_maturity = -self.price_state_variable_coeffs['intercept']/accrual - self.price_state_variable_coeffs['coefficients'] @ state_variables/accrual
+        return yield_to_maturity
+
+    def _create_bond_price_coeffs(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> None:
+        """
+        Reference: Equation (18.136) of Rebonato's *Bond Pricing and Yield Curve Modeling*
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+        reversion_inv = self.reversion_matrix_eigenvectors @ \
+                        np.diag(1 / self.reversion_matrix_eigenvalues) @ \
+                        self.reversion_matrix_eigenvectors.T
+
+        B = self._create_bond_price_coefficient_term(accrual, reversion_inv)
+        A = self._create_bond_price_intercept_term(accrual, reversion_inv)
+        self.price_state_variable_coeffs = {'intercept': A, 'coefficients': B}
+
+    def _create_bond_price_coefficient_term(self, accrual: float, reversion_inv: np.ndarray) -> np.array:
+        """
+        Helper method to calculate the bond price coefficient term
+        """
+        p = self.brownian_motion.dimension
+        negative_exp_eigen_times_accrual = np.exp( -self.reversion_matrix_eigenvalues * accrual)
+        exp_reversion = self.reversion_matrix_eigenvectors @ \
+                        np.diag(negative_exp_eigen_times_accrual) @ \
+                        self.reversion_matrix_eigenvectors.T
+
+
+        B = (exp_reversion - np.eye(p)) @ reversion_inv @ self.short_rate_coefficients
+        return B
+
+    def _create_bond_price_intercept_term(self, accrual: float, reversion_inv: np.ndarray) -> float:
+        """
+        Reference Equations (18.142) to (18.189).
+        """
+        p = self.brownian_motion.dimension
+        reversion_times_coeff = self.reversion_matrix @ self.short_rate_coefficients
+        Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)
+        transformed_Dt = self.reversion_matrix_eigenvectors @ Dt_mat @ self.reversion_matrix_eigenvectors.T
+        C_mat = self.volatility_matrix @ self.volatility_matrix.T
+        M_mat = self.reversion_matrix_eigenvectors.T @ C_mat @ self.reversion_matrix_eigenvectors
+        eigen_plus_eigen = np.ones((p, p)) * self.reversion_matrix_eigenvalues \
+                           + (np.ones((p, p)) * self.reversion_matrix_eigenvalues.T).T
+
+        F_mat = M_mat * (1- np.exp(-eigen_plus_eigen*accrual)) / eigen_plus_eigen
+        transformed_F_mat = self.reversion_matrix_eigenvectors @ F_mat @ self.reversion_matrix_eigenvectors.T
+
+        int_1 = -self.short_rate_intercept * accrual
+        int_2 = self.short_rate_coefficients.T @ (transformed_Dt @ self.reversion_level - self.reversion_level * accrual)
+
+        int_3_d = 0.5 * reversion_times_coeff.T @ C_mat @ reversion_times_coeff * accrual
+        int_3_c = -0.5 * reversion_times_coeff.T @ transformed_Dt @ C_mat @ reversion_times_coeff
+        int_3_b = -0.5 * reversion_times_coeff.T @ C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
+                  np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors.T @ \
+                  self.short_rate_coefficients
+
+        int_3_a = 0.5 * reversion_times_coeff.T @ transformed_F_mat @ reversion_times_coeff
+
+        int_3 = int_3_a + int_3_b + int_3_c + int_3_d
+        return int_1 + int_2 + int_3
+
 
 
 if __name__ == '__main__':
@@ -306,6 +394,8 @@ if __name__ == '__main__':
     from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 
     # ----------------------------------------------------------------
+
+
     start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
     end_time = datetime(2053, 10, 15, 0, 0, 0, 0)
 
@@ -323,239 +413,289 @@ if __name__ == '__main__':
                       volatility=0.02,
                       brownian_motion=brownian_motion)
 
-    path = vm.generate_path(starting_state_space_values=np.array([0.08]), set_path=True, seed=1)
     admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
-    vm.plot()
-    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
-    plt.show()
+
+    def plot_sample_path(vm):
+        path = vm.generate_path(starting_state_space_values=np.array([0.08]), set_path=True, seed=1)
+        vm.plot()
+        plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Short_Rate.png')
+        plt.show()
 
     # DISCOUNT CURVES
-    #NUM_CURVES = 20
-    #plt.figure(figsize=(13, 5))
-    #for seed in range(NUM_CURVES):
-    #    vm.generate_path(starting_state_space_values=0.08, set_path=True, seed=seed)
-    #    vm_df_curve = vm.discount_curve()
-    #    discount_factors = [vm_df_curve(date_obj) for date_obj in admissible_dates]
-    #    plt.plot(admissible_dates, discount_factors, color='tab:blue', alpha=1, linewidth=0.5)
-    #    print(seed)
+    def plot_discount_curves(vm, admissible_dates):
+        NUM_CURVES = 20
+        plt.figure(figsize=(13, 5))
+        for seed in range(NUM_CURVES):
+            vm.generate_path(starting_state_space_values=0.08, set_path=True, seed=seed)
+            vm_df_curve = vm.discount_curve()
+            discount_factors = [vm_df_curve(date_obj) for date_obj in admissible_dates]
+            plt.plot(admissible_dates, discount_factors, color='tab:blue', alpha=1, linewidth=0.5)
+            print(seed)
 
-    #plt.grid(alpha=0.25)
-    #plt.title(f'Discount Curves from Continuously-Compounding {NUM_CURVES} Vasicek Model Short Rate Paths\n'
-    #          f'with Model Parameters Mean {vm.reversion_level}; '
-    #          f'Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
-    #plt.ylabel('Discount Factor')
-    #plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Discount_Curves.png')
-    #plt.show()
+        plt.grid(alpha=0.25)
+        plt.title(f'Discount Curves from Continuously-Compounding {NUM_CURVES} Vasicek Model Short Rate Paths\n'
+                  f'with Model Parameters Mean {vm.reversion_level}; '
+                  f'Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
+        plt.ylabel('Discount Factor')
+        plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Discount_Curves.png')
+        plt.show()
 
-    # CONVEXITY
+    def plot_yield_convexity():
+        # CONVEXITY
 
-    vm = VasicekModel(reversion_level=0.04,
-                      reversion_speed=0.1,
-                      volatility=0.02,
-                      brownian_motion=brownian_motion)
+        vm = VasicekModel(reversion_level=0.04,
+                          reversion_speed=0.1,
+                          volatility=0.02,
+                          brownian_motion=brownian_motion)
 
-    INITIAL_SHORT_RATE = 0.08
-    vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=1)
-    vm_avg_short_rate = np.zeros((1, len(admissible_dates)))
-    vm_avg_df = np.zeros((1, len(admissible_dates)))
-    vm_avg_integrated_path = np.zeros((1, len(admissible_dates)))
+        INITIAL_SHORT_RATE = 0.08
+        vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=1)
+        vm_avg_short_rate = np.zeros((1, len(admissible_dates)))
+        vm_avg_df = np.zeros((1, len(admissible_dates)))
+        vm_avg_integrated_path = np.zeros((1, len(admissible_dates)))
 
-    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
-    accruals = [DayCountCalculator.compute_accrual_length(start_time, datetime_obj, DayCountConvention.ACTUAL_OVER_ACTUAL)
-                for datetime_obj in admissible_dates]
+        fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+        accruals = [DayCountCalculator.compute_accrual_length(start_time, datetime_obj, DayCountConvention.ACTUAL_OVER_ACTUAL)
+                    for datetime_obj in admissible_dates]
 
-    affine_yields = [100 * vm.zero_coupon_yield(maturity_date=date) for date in admissible_dates[1:]]
+        affine_yields = [100 * vm.zero_coupon_yield(maturity_date=date) for date in admissible_dates[1:]]
 
-    plt.plot(admissible_dates[1:], affine_yields, color='tab:blue')
+        plt.plot(admissible_dates[1:], affine_yields, color='tab:blue')
 
-    plt.plot(admissible_dates[1:],
-             [vm.average_expected_short_rate(date_obj) * 100 for date_obj in admissible_dates[1:]],
-             color='darkred')
+        plt.plot(admissible_dates[1:],
+                 [vm.average_expected_short_rate(date_obj) * 100 for date_obj in admissible_dates[1:]],
+                 color='darkred')
 
-    plt.grid(alpha=0.25)
-    plt.title(f'Convexity in the Vasicek Model by Comparing Yields and the Expected Short Rate Average Over Time;'
-              f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
-    plt.ylabel('Yield (%)')
-    plt.legend([
-        'Yield',
-        'Average Expected Short Rate'],
-               loc='lower left', frameon=False)
+        plt.grid(alpha=0.25)
+        plt.title(f'Convexity in the Vasicek Model by Comparing Yields and the Expected Short Rate Average Over Time;'
+                  f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {vm.reversion_speed}')
+        plt.ylabel('Yield (%)')
+        plt.legend([
+            'Yield',
+            'Average Expected Short Rate'],
+                   loc='lower left', frameon=False)
 
-    ax2 = ax.twinx()
+        ax2 = ax.twinx()
 
-    affine_diff = [vm.yield_convexity(datetime_obj) * 10_000 for datetime_obj in admissible_dates[1:]]
-    plt.plot(admissible_dates[1:], affine_diff, color='grey', linestyle='dotted')
+        affine_diff = [vm.yield_convexity(datetime_obj) * 10_000 for datetime_obj in admissible_dates[1:]]
+        plt.plot(admissible_dates[1:], affine_diff, color='grey', linestyle='dotted')
 
-    plt.legend(['Difference (Right)'],
-               loc='upper right', frameon=False)
+        plt.legend(['Difference (Right)'],
+                   loc='upper right', frameon=False)
 
-    ax2.set_ylabel('Convexity Adjustment (bp)')
-    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Convexity.png')
-    plt.show()
+        ax2.set_ylabel('Convexity Adjustment (bp)')
+        plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Convexity.png')
+        plt.show()
 
 
     #----------------------------------------------------------------
     # Yield Volatilities
-    SHORT_RATE_VOLATILITY = 0.008  # 80 bps
-    reversion_speeds = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
+    def plot_yield_volatilities():
+        SHORT_RATE_VOLATILITY = 0.008  # 80 bps
+        reversion_speeds = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
 
-    start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
-    brownian_motion = BrownianMotion(start_date_time=start_time,
-                                     end_date_time=end_time,
-                                     dimension=1)
+        start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
+        end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+        brownian_motion = BrownianMotion(start_date_time=start_time,
+                                         end_date_time=end_time,
+                                         dimension=1)
 
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=end_time,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
+        dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                       end_date=end_time,
+                                                       increment=timedelta(1),
+                                                       max_dates=1_000_000)
 
-    fig, ax = plt.subplots(1, 1, figsize=(11, 6))
-    for speed in reversion_speeds:
-        vm = VasicekModel(reversion_level=0.04,
-                          reversion_speed=speed,
-                          volatility=SHORT_RATE_VOLATILITY,
-                          brownian_motion=brownian_motion)
+        fig, ax = plt.subplots(1, 1, figsize=(11, 6))
+        for speed in reversion_speeds:
+            vm = VasicekModel(reversion_level=0.04,
+                              reversion_speed=speed,
+                              volatility=SHORT_RATE_VOLATILITY,
+                              brownian_motion=brownian_motion)
 
-        admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
-        ax.plot(admissible_dates[1:], [vm.yield_volatility(date_obj) for date_obj in admissible_dates[1:]])
+            admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+            ax.plot(admissible_dates[1:], [vm.yield_volatility(date_obj) for date_obj in admissible_dates[1:]])
 
-    ax.grid(alpha=0.25)
-    plt.title('Yield Volatilities Across Reversion Speeds and Maturity Dates for the Vasicek Model')
-    plt.xlabel('Maturity Date')
-    plt.ylabel('Volatility')
-    ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
-              title='Reversion Speed',
-              bbox_to_anchor=(1.025, 0.6), frameon=False)
-    plt.tight_layout()
-    plt.show()
+        ax.grid(alpha=0.25)
+        plt.title('Yield Volatilities Across Reversion Speeds and Maturity Dates for the Vasicek Model')
+        plt.xlabel('Maturity Date')
+        plt.ylabel('Volatility')
+        ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
+                  title='Reversion Speed',
+                  bbox_to_anchor=(1.025, 0.6), frameon=False)
+        plt.tight_layout()
+        plt.show()
 
     #----------------------------------------------------------------------
     # Yield convexities for different reversion speeds
-    SHORT_RATE_VOLATILITY = 0.008  # 80 bps
-    INITIAL_SHORT_RATE = 0.05
-    reversion_speeds = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
+    def plot_yield_convexities():
+        SHORT_RATE_VOLATILITY = 0.008  # 80 bps
+        INITIAL_SHORT_RATE = 0.05
+        reversion_speeds = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
 
-    start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+        start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
+        end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
 
-    brownian_motion = BrownianMotion(start_date_time=start_time,
-                                     end_date_time=end_time,
-                                     dimension=1)
+        brownian_motion = BrownianMotion(start_date_time=start_time,
+                                         end_date_time=end_time,
+                                         dimension=1)
 
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=end_time,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
-    fig, ax = plt.subplots(1, 1, figsize=(11, 6))
-    for speed in reversion_speeds:
-        vm = VasicekModel(reversion_level=0.035,
-                          reversion_speed=speed,
-                          volatility=SHORT_RATE_VOLATILITY,
-                          brownian_motion=brownian_motion)
+        dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                       end_date=end_time,
+                                                       increment=timedelta(1),
+                                                       max_dates=1_000_000)
+        fig, ax = plt.subplots(1, 1, figsize=(11, 6))
+        for speed in reversion_speeds:
+            vm = VasicekModel(reversion_level=0.035,
+                              reversion_speed=speed,
+                              volatility=SHORT_RATE_VOLATILITY,
+                              brownian_motion=brownian_motion)
 
-        admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
-        ax.plot(admissible_dates[1:], [vm.yield_convexity(date_obj) * 10_000
-                                       for date_obj in admissible_dates[1:]])
+            admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+            ax.plot(admissible_dates[1:], [vm.yield_convexity(date_obj) * 10_000
+                                           for date_obj in admissible_dates[1:]])
 
-    ax.grid(alpha=0.25)
-    plt.title('Yield Convexities Across Reversion Speeds and Maturity Dates for the Vasicek Model')
-    plt.xlabel('Maturity Date')
-    plt.ylabel('Convexity (bp)')
-    ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
-              title='Reversion Speed',
-              bbox_to_anchor=(1.025, 0.6), frameon=False)
-    plt.tight_layout()
-    plt.show()
+        ax.grid(alpha=0.25)
+        plt.title('Yield Convexities Across Reversion Speeds and Maturity Dates for the Vasicek Model')
+        plt.xlabel('Maturity Date')
+        plt.ylabel('Convexity (bp)')
+        ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
+                  title='Reversion Speed',
+                  bbox_to_anchor=(1.025, 0.6), frameon=False)
+        plt.tight_layout()
+        plt.show()
 
 
     #-----------------------------------------------------------------------
     # Yield curves for different reversion speeds
 
-    SHORT_RATE_VOLATILITY = 0.008  # 80 bps
-    INITIAL_SHORT_RATE = 0.05
-    reversion_speeds = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
+    def plot_yield_curves_across_reversion_speed():
+        SHORT_RATE_VOLATILITY = 0.008  # 80 bps
+        INITIAL_SHORT_RATE = 0.05
+        reversion_speeds = [0.02, 0.04, 0.08, 0.16, 0.32, 0.64]
 
-    start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+        start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
+        end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
 
-    brownian_motion = BrownianMotion(start_date_time=start_time,
-                                     end_date_time=end_time,
-                                     dimension=1)
+        brownian_motion = BrownianMotion(start_date_time=start_time,
+                                         end_date_time=end_time,
+                                         dimension=1)
 
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=end_time,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
+        dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                       end_date=end_time,
+                                                       increment=timedelta(1),
+                                                       max_dates=1_000_000)
 
-    fig, ax = plt.subplots(1, 1, figsize=(11, 6))
-    for speed in reversion_speeds:
+        fig, ax = plt.subplots(1, 1, figsize=(11, 6))
+        for speed in reversion_speeds:
+            vm = VasicekModel(reversion_level=0.035,
+                              reversion_speed=speed,
+                              volatility=SHORT_RATE_VOLATILITY,
+                              brownian_motion=brownian_motion)
+
+            vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=1)
+
+            admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+            ax.plot(admissible_dates[1:], [vm.zero_coupon_yield(date_obj) * 100
+                                           for date_obj in admissible_dates[1:]])
+
+        ax.grid(alpha=0.25)
+        plt.title(f'Yields Across Reversion Speeds and Maturity Dates for the Vasicek Model'
+                  f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed Varies')
+        plt.xlabel('Maturity Date')
+        plt.ylabel('Yield (%)')
+        ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
+                  title='Reversion Speed',
+                  bbox_to_anchor=(1.2, 0.65), frameon=False)
+        plt.tight_layout()
+        plt.show()
+
+    # Instantaneous forward rates
+    def plot_instantaneous_forward_rates():
+        fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+
+        SHORT_RATE_VOLATILITY = 0.008  # 80 bps
+        INITIAL_SHORT_RATE = 0.05
+        reversion_speed = 0.2
+        start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
+        end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+
+        brownian_motion = BrownianMotion(start_date_time=start_time,
+                                         end_date_time=end_time,
+                                         dimension=1)
+
+        years = [1, 5, 10, 20, 30]
+
+        dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                       end_date=end_time,
+                                                       increment=timedelta(1),
+                                                       max_dates=1_000_000)
+
         vm = VasicekModel(reversion_level=0.035,
-                          reversion_speed=speed,
+                          reversion_speed=reversion_speed,
                           volatility=SHORT_RATE_VOLATILITY,
                           brownian_motion=brownian_motion)
 
-        vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=1)
+        for year in years:
+            vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=year)
+            admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
+            ax.plot(admissible_dates[1:],
+                    [vm.instantaneous_forward_rate(maturity_date=date_obj + relativedelta(years=year),
+                                                   purchase_date=date_obj) * 100
+                     for date_obj in admissible_dates[1:]],
+                    linewidth=0.85)
 
-        admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
-        ax.plot(admissible_dates[1:], [vm.zero_coupon_yield(date_obj) * 100
-                                       for date_obj in admissible_dates[1:]])
+        plt.axhline((vm.long_term_mean + vm.convexity_limit) * 100, linestyle="--", linewidth=0.75, color="grey")
 
-    ax.grid(alpha=0.25)
-    plt.title(f'Yields Across Reversion Speeds and Maturity Dates for the Vasicek Model'
-              f'\nModel Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed Varies')
-    plt.xlabel('Maturity Date')
-    plt.ylabel('Yield (%)')
-    ax.legend([f'\u03BA = {speed:0.2f}' for speed in reversion_speeds],
-              title='Reversion Speed',
-              bbox_to_anchor=(1.2, 0.65), frameon=False)
-    plt.tight_layout()
-    plt.show()
+        ax.legend([f'{years} Years' for years in years],
+                  title='Forward Rate',
+                  bbox_to_anchor=(1.0, 0.6), frameon=False)
 
-    # Instantaneous forward rates
-    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+        plt.grid(alpha=0.25)
+        plt.title(f'Instantaneous Forward Rate Process Sample Paths in the Vasicek Model\n'
+                   f'Model Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {reversion_speed}')
+        plt.tight_layout()
+        plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Instantaneous_Forward_Rate_Processes.png')
+        plt.show()
 
-    SHORT_RATE_VOLATILITY = 0.008  # 80 bps
-    INITIAL_SHORT_RATE = 0.05
-    reversion_speed = 0.2
-    start_time = datetime(2023, 10, 15, 0, 0, 0, 0)
-    end_time = datetime(2073, 10, 15, 0, 0, 0, 0)
+
+    #---------------------------------------------------------------------
+    import math
+
+    short_rate_intercept = 0.01
+    short_rate_coefficients = np.array([0.02, -0.001])
+    reversion_level = np.array([0.03, 0.05])
+
+    rho = 0.0
+    stand_dev_1 = 1
+    stand_dev_2 = 1
+    volatility_matrix = np.array([[stand_dev_1 ** 2, stand_dev_1 * stand_dev_2 * rho],
+                                   [stand_dev_1 * stand_dev_2 * rho, stand_dev_2 ** 2]])
 
     brownian_motion = BrownianMotion(start_date_time=start_time,
                                      end_date_time=end_time,
-                                     dimension=1)
+                                     dimension=2)
 
-    years = [1, 5, 10, 20, 30]
 
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=end_time,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
+    reversion_directions = np.array([[1.0/math.sqrt(2), 1.0/math.sqrt(2)],
+                                     [1.0/math.sqrt(2), -1.0/math.sqrt(2)]])
+    reversion_matrix = reversion_directions @ np.array([[0.02, 0.05], [0.05, 0.1]]) @ reversion_directions.T
 
-    vm = VasicekModel(reversion_level=0.035,
-                      reversion_speed=reversion_speed,
-                      volatility=SHORT_RATE_VOLATILITY,
-                      brownian_motion=brownian_motion)
+    mvm = MultivariateVasicekModel(
+        short_rate_intercept=short_rate_intercept,
+        short_rate_coefficients=short_rate_coefficients,
+        reversion_level=reversion_level,
+        reversion_matrix=reversion_matrix,
+        volatility_matrix=volatility_matrix,
+        brownian_motion=brownian_motion)
 
-    for year in years:
-        vm.generate_path(starting_state_space_values=INITIAL_SHORT_RATE, set_path=True, seed=year)
-        admissible_dates = [date_obj for date_obj in dates if date_obj < vm.end_date_time]
-        ax.plot(admissible_dates[1:],
-                [vm.instantaneous_forward_rate(maturity_date=date_obj + relativedelta(years=year),
-                                               purchase_date=date_obj) * 100
-                 for date_obj in admissible_dates[1:]],
-                linewidth=0.85)
+    starting_state_variables = np.array([0.03, 0.02])
+    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
-    plt.axhline((vm.long_term_mean + vm.convexity_limit) * 100, linestyle="--", linewidth=0.75, color="grey")
-
-    ax.legend([f'{years} Years' for years in years],
-              title='Forward Rate',
-              bbox_to_anchor=(1.0, 0.6), frameon=False)
-
-    plt.grid(alpha=0.25)
-    plt.title(f'Instantaneous Forward Rate Process Sample Paths in the Vasicek Model\n'
-               f'Model Parameters: Mean {vm.long_term_mean}; Volatility {vm.volatility}; Reversion Speed {reversion_speed}')
-    plt.tight_layout()
-    plt.savefig('../../../../../../fixedIncome/docs/images/Vasicek_Instantaneous_Forward_Rate_Processes.png')
+    admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
+    plt.figure(figsize=(13, 5))
+    plt.plot(admissible_dates[1:], [mvm(datetime_obj) for datetime_obj in admissible_dates[1:]], linewidth=0.3)
     plt.show()
 
+    plt.figure(figsize=(13, 5))
+    plt.plot(admissible_dates[1:], [mvm.zero_coupon_bond_yield(maturity_date=datetime_obj) for datetime_obj in admissible_dates[1:]])
+    plt.show()
