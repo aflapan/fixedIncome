@@ -161,7 +161,7 @@ mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
 def test_multivariate_affine_coefficients_are_zero_at_maturity() -> None:
     """
-    Tests that the affine model coefficients for the Vasicek Model are zero for the bond maturity date.
+    Tests that the affine model coefficients for the Multivariate Vasicek Model are zero for the bond maturity date.
     """
     PASS_THRESH = 1E-13
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
@@ -173,5 +173,5 @@ def test_multivariate_affine_coefficients_are_zero_at_maturity() -> None:
 
     for date_obj in admissible_dates:
         mvm._create_bond_price_coeffs(maturity_date=date_obj, purchase_date=date_obj)
-        assert abs(vm.price_state_variable_coeffs['intercept']) < PASS_THRESH
-        assert np.sum(np.abs(vm.price_state_variable_coeffs['coefficients'])) < PASS_THRESH
+        assert abs(mvm.price_state_variable_coeffs['intercept']) < PASS_THRESH
+        assert np.sum(np.abs(mvm.price_state_variable_coeffs['coefficients'])) < PASS_THRESH
