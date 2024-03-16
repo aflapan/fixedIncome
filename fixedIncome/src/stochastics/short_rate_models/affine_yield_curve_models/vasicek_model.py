@@ -362,9 +362,10 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         """
         p = self.brownian_motion.dimension
         reversion_times_coeff = self.reversion_matrix @ self.short_rate_coefficients
-        Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)
+        reversion_inv_times_coeff = reversion_inv @ self.short_rate_coefficients
+        Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)  # Looks good
         transformed_Dt = self.reversion_matrix_eigenvectors @ Dt_mat @ self.reversion_matrix_eigenvectors.T
-        C_mat = self.volatility_matrix @ self.volatility_matrix.T
+        C_mat = self.volatility_matrix @ self.volatility_matrix.T                                                         # looks good
         M_mat = self.reversion_matrix_eigenvectors.T @ C_mat @ self.reversion_matrix_eigenvectors
         eigen_plus_eigen = np.ones((p, p)) * self.reversion_matrix_eigenvalues \
                            + (np.ones((p, p)) * self.reversion_matrix_eigenvalues.T).T
@@ -375,13 +376,15 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         int_1 = -self.short_rate_intercept * accrual
         int_2 = self.short_rate_coefficients.T @ (transformed_Dt @ self.reversion_level - self.reversion_level * accrual)
 
-        int_3_d = 0.5 * reversion_times_coeff.T @ C_mat @ reversion_times_coeff * accrual
-        int_3_c = -0.5 * reversion_times_coeff.T @ transformed_Dt @ C_mat @ reversion_times_coeff
-        int_3_b = -0.5 * reversion_times_coeff.T @ C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
+        int_3_d = 0.5 * reversion_inv_times_coeff.T @ C_mat @ reversion_inv_times_coeff * accrual
+
+        int_3_c = -0.5 * reversion_inv_times_coeff.T @ transformed_Dt @ C_mat @ reversion_inv_times_coeff
+
+        int_3_b = -0.5 * reversion_inv_times_coeff.T @ C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
                   np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors.T @ \
                   self.short_rate_coefficients
 
-        int_3_a = 0.5 * reversion_times_coeff.T @ transformed_F_mat @ reversion_times_coeff
+        int_3_a = 0.5 * reversion_inv_times_coeff.T @ transformed_F_mat @ reversion_inv_times_coeff
 
         int_3 = int_3_a + int_3_b + int_3_c + int_3_d
         return int_1 + int_2 + int_3
@@ -661,8 +664,8 @@ if __name__ == '__main__':
     #---------------------------------------------------------------------
     import math
 
-    short_rate_intercept = 0.01
-    short_rate_coefficients = np.array([0.02, -0.001])
+    short_rate_intercept = 0.035
+    short_rate_coefficients = np.array([0.02, 0.001])
     reversion_level = np.array([0.03, 0.05])
 
     rho = 0.0
@@ -688,7 +691,7 @@ if __name__ == '__main__':
         volatility_matrix=volatility_matrix,
         brownian_motion=brownian_motion)
 
-    starting_state_variables = np.array([0.03, 0.02])
+    starting_state_variables = np.array([0.03, 0.075])
     mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
     admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
