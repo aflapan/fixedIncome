@@ -7,10 +7,10 @@ fixedIncome.tests.test_stochastics.test_short_rate_models.test_affine_yield_curv
 """
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
-import numpy as np
 import math
+import numpy as np
 import matplotlib.pyplot as plt
-from typing import Optional
+from typing import Optional, Iterable
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
 from fixedIncome.src.stochastics.base_processes import DiffusionProcess
 from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel
@@ -299,6 +299,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         self.volatility_matrix = volatility_matrix
 
         self.reversion_matrix_eigenvalues, self.reversion_matrix_eigenvectors = np.linalg.eig(self.reversion_matrix)
+        self.C_mat = self.volatility_matrix @ self.volatility_matrix.T
 
         diffusion_process = DiffusionProcess(
             drift_diffusion_collection={
@@ -325,8 +326,6 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         state_variables = self.state_variables_diffusion_process(purchase_date)
         affine_price_expression = self.price_state_variable_coeffs['intercept'] + self.price_state_variable_coeffs['coefficients'] @ state_variables
         return math.exp(affine_price_expression)
-
-
 
     def zero_coupon_bond_yield(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
@@ -397,12 +396,10 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         Reference Equations (18.142) to (18.189).
         """
         p = self.brownian_motion.dimension
-        reversion_times_coeff = self.reversion_matrix @ self.short_rate_coefficients
         reversion_inv_times_coeff = reversion_inv @ self.short_rate_coefficients
-        Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)  # Looks good
+        Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)
         transformed_Dt = self.reversion_matrix_eigenvectors @ Dt_mat @ self.reversion_matrix_eigenvectors.T
-        C_mat = self.volatility_matrix @ self.volatility_matrix.T                                                         # looks good
-        M_mat = self.reversion_matrix_eigenvectors.T @ C_mat @ self.reversion_matrix_eigenvectors
+        M_mat = self.reversion_matrix_eigenvectors.T @ self.C_mat @ self.reversion_matrix_eigenvectors
         eigen_plus_eigen = np.ones((p, p)) * self.reversion_matrix_eigenvalues \
                            + (np.ones((p, p)) * self.reversion_matrix_eigenvalues.T).T
 
@@ -412,11 +409,11 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         int_1 = -self.short_rate_intercept * accrual
         int_2 = self.short_rate_coefficients.T @ (transformed_Dt @ self.reversion_level - self.reversion_level * accrual)
 
-        int_3_d = 0.5 * reversion_inv_times_coeff.T @ C_mat @ reversion_inv_times_coeff * accrual
+        int_3_d = 0.5 * reversion_inv_times_coeff.T @ self.C_mat @ reversion_inv_times_coeff * accrual
 
-        int_3_c = -0.5 * reversion_inv_times_coeff.T @ transformed_Dt @ C_mat @ reversion_inv_times_coeff
+        int_3_c = -0.5 * reversion_inv_times_coeff.T @ transformed_Dt @ self.C_mat @ reversion_inv_times_coeff
 
-        int_3_b = -0.5 * reversion_inv_times_coeff.T @ C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
+        int_3_b = -0.5 * reversion_inv_times_coeff.T @ self.C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
                   np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors.T @ \
                   self.short_rate_coefficients
 
@@ -424,6 +421,49 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
         int_3 = int_3_a + int_3_b + int_3_c + int_3_d
         return int_1 + int_2 + int_3
+
+    def yield_covariance_matrix(
+            self, maturity_dates: Iterable[datetime|date], purchase_date: Optional[datetime] = None
+    ) -> np.ndarray:
+        """
+        Returns the matrix of yield covariances, where entry Cov[i, j] is the
+        covariance between yields y_{t}^{T_i} and y_{t}^{T_j} .
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if min(maturity_dates) <= purchase_date:
+            raise ValueError(f'Minimum maturity datetime {min(maturity_dates)} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        maturity_dates = list(maturity_dates)
+        beta_mat = np.empty((self.dimension, len(maturity_dates)))
+        for index, maturity in enumerate(maturity_dates):
+            self._create_bond_yield_coeffs(maturity_date=maturity, purchase_date=purchase_date)
+            beta_mat[:, index] = self.yield_state_variable_coeffs['coefficients']
+
+        return beta_mat.T @ self.C_mat @ beta_mat
+
+    def yield_volatility(self, maturity_date: datetime|date, purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Returns the volatility of the time-t yield for a zero-coupon bond maturing at the specified maturity datetime.
+        the volatility is the square root of the variance for the yield.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if maturity_date <= purchase_date:
+            raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        covar_mat = self.yield_covariance_matrix(maturity_dates=[maturity_date], purchase_date=purchase_date)
+        return math.sqrt(float(covar_mat))
+
+    def instantaneous_forward_rate(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        """
+        pass
+
+
+
 
 
 
@@ -738,3 +778,12 @@ if __name__ == '__main__':
     plt.figure(figsize=(13, 5))
     plt.plot(admissible_dates[1:], [mvm.zero_coupon_bond_yield(maturity_date=datetime_obj) for datetime_obj in admissible_dates[1:]])
     plt.show()
+
+    plt.figure(figsize=(13, 5))
+    plt.title('Yield Volatility Across Maturity Date')
+    plt.plot(admissible_dates[1:],
+             [mvm.yield_volatility(maturity_date=datetime_obj) for datetime_obj in admissible_dates[1:]])
+    plt.grid(alpha=0.25)
+    plt.show()
+
+

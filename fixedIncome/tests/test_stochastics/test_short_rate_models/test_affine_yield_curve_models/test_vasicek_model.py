@@ -192,6 +192,7 @@ def test_multivariate_affine_yield_and_price_have_correct_relationship() -> None
         transformed_yield = -math.log(price)/accrual
         assert abs(bond_yield - transformed_yield) < PASS_THRESH
 
+
 def test_multivariate_affine_yield_raises_value_error_for_bad_maturity_date() -> None:
     """
     Tests that trying to calculate the yield of a zero-coupon bond whose maturity date is less-than-or-equal-to
@@ -200,6 +201,14 @@ def test_multivariate_affine_yield_raises_value_error_for_bad_maturity_date() ->
     with pytest.raises(ValueError):
         mvm.zero_coupon_bond_yield(maturity_date=start_time)
 
+
+def test_multivaraite_yield_volatility_raises_value_error_for_bad_maturity_date() -> None:
+    """
+    Tests that trying to calculate the yield volatility of a zero-coupon bond whose maturity date is
+    less-than-or-equal-to the purchase date results in a value error being raises.
+    """
+    with pytest.raises(ValueError):
+        mvm.yield_volatility(maturity_date=start_time)
 
 def test_multivariate_affine_intercepts_are_same_as_vasicek_coefficients() -> None:
     """
@@ -289,3 +298,45 @@ def test_multivariate_affine_coefficients_are_same_as_vasicek_coefficients() -> 
         multi_coeffs = mvm.price_state_variable_coeffs['coefficients']
         vm_coeffs = vm.price_state_variable_coeffs['coefficient']
         assert abs(multi_coeffs - vm_coeffs) < PASS_THRESH
+
+
+def test_multivariate_yield_volatilities_are_same_as_vasicek_() -> None:
+    """
+
+    """
+    PASS_THRESH = 1E-13
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=1)
+
+    vm = VasicekModel(reversion_level=0.04,
+                      reversion_speed=2.0,
+                      volatility=0.02,
+                      brownian_motion=brownian_motion)
+
+    starting_short_rate_value = 0.05
+    vm.generate_path(starting_state_space_values=starting_short_rate_value, set_path=True, seed=2024)
+
+    short_rate_intercept = 0.0
+    short_rate_coefficients = np.array([1.0])
+    reversion_level = np.array([0.04])
+    volatility_matrix = np.array([[0.02]])
+    reversion_matrix = np.array([[2.0]])
+
+    mvm = MultivariateVasicekModel(
+        short_rate_intercept=short_rate_intercept,
+        short_rate_coefficients=short_rate_coefficients,
+        reversion_level=reversion_level,
+        reversion_matrix=reversion_matrix,
+        volatility_matrix=volatility_matrix,
+        brownian_motion=brownian_motion)
+
+    starting_state_variables = np.array([0.05])
+    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
+
+    for datetime_obj in admissible_dates[1:]:
+        vm_yield_vol = vm.yield_volatility(maturity_date=datetime_obj)
+        multi_yield_vol = mvm.yield_volatility(maturity_date=datetime_obj)
+        assert abs(multi_yield_vol - vm_yield_vol) < PASS_THRESH
+
