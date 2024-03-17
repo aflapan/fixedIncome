@@ -2,11 +2,12 @@
 This module contains the unit tests for
 fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.vasicek_model.py
 """
-
 from datetime import datetime, timedelta
 import math
 import numpy as np
 import pandas as pd
+import pytest
+
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
@@ -176,6 +177,29 @@ def test_multivariate_affine_coefficients_are_zero_at_maturity() -> None:
         mvm._create_bond_price_coeffs(maturity_date=date_obj, purchase_date=date_obj)
         assert abs(mvm.price_state_variable_coeffs['intercept']) < PASS_THRESH
         assert np.sum(np.abs(mvm.price_state_variable_coeffs['coefficients'])) < PASS_THRESH
+
+def test_multivariate_affine_yield_and_price_have_correct_relationship() -> None:
+    """
+    Tests that the multivariate Vasicek model yield (as calculated from using the affine coefficients) is
+    always equal to -log(P_t^T)/(T-t) for the time-t bond price P_t^T of a zero-coupon bond maturing at time T.
+    """
+    PASS_THRESH = 1E-13
+
+    for datetime_obj in admissible_dates[1:]:
+        accrual = DayCountCalculator.compute_accrual_length(start_time, datetime_obj, mvm.day_count_convention)
+        price = mvm.zero_coupon_bond_price(maturity_date=datetime_obj)
+        bond_yield = mvm.zero_coupon_bond_yield(maturity_date=datetime_obj)
+        transformed_yield = -math.log(price)/accrual
+        assert abs(bond_yield - transformed_yield) < PASS_THRESH
+
+def test_multivariate_affine_yield_raises_value_error_for_bad_maturity_date() -> None:
+    """
+    Tests that trying to calculate the yield of a zero-coupon bond whose maturity date is less-than-or-equal-to
+    the purchase date results in a value error.
+    """
+    with pytest.raises(ValueError):
+        mvm.zero_coupon_bond_yield(maturity_date=start_time)
+
 
 def test_multivariate_affine_intercepts_are_same_as_vasicek_coefficients() -> None:
     """

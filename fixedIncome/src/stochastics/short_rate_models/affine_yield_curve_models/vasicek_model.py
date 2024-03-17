@@ -314,17 +314,53 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
             state_variables_diffusion_process=diffusion_process
         )
 
-    def zero_coupon_bond_yield(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
+    def zero_coupon_bond_price(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
+        Calculates the price of a zero coupon bond.
         """
         if purchase_date is None:
             purchase_date = self.start_date_time
 
         self._create_bond_price_coeffs(maturity_date, purchase_date)
         state_variables = self.state_variables_diffusion_process(purchase_date)
-        accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
-        yield_to_maturity = -self.price_state_variable_coeffs['intercept']/accrual - self.price_state_variable_coeffs['coefficients'] @ state_variables/accrual
+        affine_price_expression = self.price_state_variable_coeffs['intercept'] + self.price_state_variable_coeffs['coefficients'] @ state_variables
+        return math.exp(affine_price_expression)
+
+
+
+    def zero_coupon_bond_yield(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Calculates the zero coupon bond yield of
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if maturity_date <= purchase_date:
+            raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        state_variables = self.state_variables_diffusion_process(purchase_date)
+        self._create_bond_yield_coeffs(maturity_date, purchase_date)
+        yield_to_maturity = self.yield_state_variable_coeffs['intercept'] + self.yield_state_variable_coeffs['coefficients'] @ state_variables
         return yield_to_maturity
+
+
+    def _create_bond_yield_coeffs(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> None:
+        """
+        Helper method to create the affine intercept alpha and coefficients beta such that the time-T yield
+        y_t^T = alpha + <beta, x_t>
+        where x_t are the time-t state variables. The expressions can be deduced from
+        e^{- (T-t) y_{t}^{T}} = e^{A_{t} + <B_t, x_t>} where A_t and B_t are the time-t affine intercept and coefficinets,
+        respectively, which give the bond price.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        self._create_bond_price_coeffs(maturity_date, purchase_date)
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+        self.yield_state_variable_coeffs = dict()
+        self.yield_state_variable_coeffs['intercept'] = -self.price_state_variable_coeffs['intercept']/accrual
+        self.yield_state_variable_coeffs['coefficients'] = -self.price_state_variable_coeffs['coefficients']/accrual
+
 
     def _create_bond_price_coeffs(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> None:
         """
