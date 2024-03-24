@@ -210,42 +210,47 @@ def test_multivaraite_yield_volatility_raises_value_error_for_bad_maturity_date(
     with pytest.raises(ValueError):
         mvm.yield_volatility(maturity_date=start_time)
 
+
+
+
+#----------------------------------------------------------------------
+
+PASS_THRESH = 1E-13
+
+brownian_motion = BrownianMotion(start_date_time=start_time,
+                                 end_date_time=end_time,
+                                 dimension=1)
+
+vm = VasicekModel(reversion_level=0.04,
+                  reversion_speed=2.0,
+                  volatility=0.02,
+                  brownian_motion=brownian_motion)
+
+starting_short_rate_value = 0.05
+vm.generate_path(starting_state_space_values=starting_short_rate_value, set_path=True, seed=2024)
+
+short_rate_intercept = 0.0
+short_rate_coefficients = np.array([1.0])
+reversion_level = np.array([0.04])
+volatility_matrix = np.array([[0.02]])
+reversion_matrix = np.array([[2.0]])
+
+mvm = MultivariateVasicekModel(
+    short_rate_intercept=short_rate_intercept,
+    short_rate_coefficients=short_rate_coefficients,
+    reversion_level=reversion_level,
+    reversion_matrix=reversion_matrix,
+    volatility_matrix=volatility_matrix,
+    brownian_motion=brownian_motion)
+
+starting_state_variables = np.array([0.05])
+mvm.generate_path(starting_state_variables, set_path=True, seed=1)
+
 def test_multivariate_affine_intercepts_are_same_as_vasicek_coefficients() -> None:
     """
     Tests that the multivariate Vasicek model has the same affine intercepts across a range of maturity dates
     as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
     """
-    PASS_THRESH = 1E-13
-
-    brownian_motion = BrownianMotion(start_date_time=start_time,
-                                     end_date_time=end_time,
-                                     dimension=1)
-
-    vm = VasicekModel(reversion_level=0.04,
-                      reversion_speed=2.0,
-                      volatility=0.02,
-                      brownian_motion=brownian_motion)
-
-    starting_short_rate_value = 0.05
-    vm.generate_path(starting_state_space_values=starting_short_rate_value, set_path=True, seed=2024)
-
-    short_rate_intercept = 0.0
-    short_rate_coefficients = np.array([1.0])
-    reversion_level = np.array([0.04])
-    volatility_matrix = np.array([[0.02]])
-    reversion_matrix = np.array([[2.0]])
-
-    mvm = MultivariateVasicekModel(
-        short_rate_intercept=short_rate_intercept,
-        short_rate_coefficients=short_rate_coefficients,
-        reversion_level=reversion_level,
-        reversion_matrix=reversion_matrix,
-        volatility_matrix=volatility_matrix,
-        brownian_motion=brownian_motion)
-
-    starting_state_variables = np.array([0.05])
-    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
-
     for datetime_obj in admissible_dates:
         mvm._create_bond_price_coeffs(maturity_date=datetime_obj)
         vm._create_bond_price_coeffs(maturity_date=datetime_obj)
@@ -261,36 +266,6 @@ def test_multivariate_affine_coefficients_are_same_as_vasicek_coefficients() -> 
     Tests that the multivariate Vasicek model has the same affine coefficients across a range of maturity dates
     as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
     """
-    PASS_THRESH = 1E-13
-
-    brownian_motion = BrownianMotion(start_date_time=start_time,
-                                     end_date_time=end_time,
-                                     dimension=1)
-
-    vm = VasicekModel(reversion_level=0.04,
-                      reversion_speed=2.0,
-                      volatility=0.02,
-                      brownian_motion=brownian_motion)
-
-    starting_short_rate_value = 0.05
-    vm.generate_path(starting_state_space_values=starting_short_rate_value, set_path=True, seed=2024)
-
-    short_rate_intercept = 0.0
-    short_rate_coefficients = np.array([1.0])
-    reversion_level = np.array([0.04])
-    volatility_matrix = np.array([[0.02]])
-    reversion_matrix = np.array([[2.0]])
-
-    mvm = MultivariateVasicekModel(
-        short_rate_intercept=short_rate_intercept,
-        short_rate_coefficients=short_rate_coefficients,
-        reversion_level=reversion_level,
-        reversion_matrix=reversion_matrix,
-        volatility_matrix=volatility_matrix,
-        brownian_motion=brownian_motion)
-
-    starting_state_variables = np.array([0.05])
-    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
     for datetime_obj in admissible_dates:
         mvm._create_bond_price_coeffs(maturity_date=datetime_obj)
@@ -302,41 +277,49 @@ def test_multivariate_affine_coefficients_are_same_as_vasicek_coefficients() -> 
 
 def test_multivariate_yield_volatilities_are_same_as_vasicek_() -> None:
     """
-
+    Tests that the multivariate Vasicek model has the same yield volatilities across a range of maturity dates
+    as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
     """
-    PASS_THRESH = 1E-13
-
-    brownian_motion = BrownianMotion(start_date_time=start_time,
-                                     end_date_time=end_time,
-                                     dimension=1)
-
-    vm = VasicekModel(reversion_level=0.04,
-                      reversion_speed=2.0,
-                      volatility=0.02,
-                      brownian_motion=brownian_motion)
-
-    starting_short_rate_value = 0.05
-    vm.generate_path(starting_state_space_values=starting_short_rate_value, set_path=True, seed=2024)
-
-    short_rate_intercept = 0.0
-    short_rate_coefficients = np.array([1.0])
-    reversion_level = np.array([0.04])
-    volatility_matrix = np.array([[0.02]])
-    reversion_matrix = np.array([[2.0]])
-
-    mvm = MultivariateVasicekModel(
-        short_rate_intercept=short_rate_intercept,
-        short_rate_coefficients=short_rate_coefficients,
-        reversion_level=reversion_level,
-        reversion_matrix=reversion_matrix,
-        volatility_matrix=volatility_matrix,
-        brownian_motion=brownian_motion)
-
-    starting_state_variables = np.array([0.05])
-    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
     for datetime_obj in admissible_dates[1:]:
         vm_yield_vol = vm.yield_volatility(maturity_date=datetime_obj)
         multi_yield_vol = mvm.yield_volatility(maturity_date=datetime_obj)
         assert abs(multi_yield_vol - vm_yield_vol) < PASS_THRESH
 
+
+def test_multivariate_coeff_deriv_wrt_maturity_are_same_as_vasicek() -> None:
+    """
+    Tests that the derivatives of the affine price coefficients for the multivariate Vasicek model
+    and the Vasicek model are the same when the multivariate Vasicek model is made to be the same
+    as the standard Vasicek model.
+    """
+    for datetime_obj in admissible_dates[1:]:
+        vm_derivs = vm._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=datetime_obj)
+        mvm_derivs = mvm._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=datetime_obj)
+
+        assert abs(vm_derivs['coefficient'] - mvm_derivs['coefficients']) < PASS_THRESH
+
+
+def test_multivariate_intercept_deriv_wrt_maturity_are_same_as_vasicek() -> None:
+    """
+    Tests that the derivatives of the affine price intercepts for the multivariate Vasicek model
+    and the Vasicek model are the same when the multivariate Vasicek model is made to be the same
+    as the standard Vasicek model.
+    """
+    for datetime_obj in admissible_dates[1:]:
+        vm_derivs = vm._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=datetime_obj)
+        mvm_derivs = mvm._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=datetime_obj)
+
+        assert abs(vm_derivs['intercept'] - mvm_derivs['intercept']) < PASS_THRESH
+
+
+def test_multivariate_instantaneous_forward_rates_are_same_as_vasicek() -> None:
+    """
+    Tests that the multivariate Vasicek model has the same instantaneous forward rates across a range of maturity dates
+    as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
+    """
+
+    for datetime_obj in admissible_dates[1:]:
+        vm_instantaneous_fr = vm.instantaneous_forward_rate(maturity_date=datetime_obj)
+        multi_instantaneous_fr = mvm.instantaneous_forward_rate(maturity_date=datetime_obj)
+        assert abs(vm_instantaneous_fr - multi_instantaneous_fr) < PASS_THRESH

@@ -111,12 +111,17 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
         intercept = -term1 - term2
         self.price_state_variable_coeffs = {'intercept': intercept, 'coefficient': coefficient}
 
-    def _calculate_bond_price_coeff_derivatives_wrt_maturity(self, purchase_date, maturity_date) -> dict[str, float]:
+    def _calculate_bond_price_coeff_derivatives_wrt_maturity(
+            self, maturity_date: date | datetime, purchase_date: Optional[date | datetime] = None
+    ) -> dict[str, float]:
         """
         Returns a dictionary with the same keys ('intercept' and 'coefficient') as
         the dictionary formed by self._create_bond_price_coeffs, but instead returns each bond price
         coefficient's derivative with respect to maturity time T.
         """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
         accrual = DayCountCalculator.compute_accrual_length(start_date=purchase_date,
                                                             end_date=maturity_date,
                                                             dcc=self.day_count_convention)
@@ -291,7 +296,6 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         assert brownian_motion.dimension == len(reversion_level)
         assert brownian_motion.dimension == len(reversion_matrix)
 
-
         self.short_rate_intercept = short_rate_intercept
         self.short_rate_coefficients = short_rate_coefficients
         self.reversion_level = reversion_level
@@ -460,9 +464,57 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
     def instantaneous_forward_rate(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
         """
-        pass
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        derivatives = self._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=maturity_date,
+                                                                                purchase_date=purchase_date)
+
+        state_variables = self.state_variables_diffusion_process(purchase_date)
+        forward_rate = -derivatives['intercept'] - derivatives['coefficients'] @ state_variables
+        return forward_rate
 
 
+    def _calculate_bond_price_coeff_derivatives_wrt_maturity(self, maturity_date: date|datetime, purchase_date: Optional[date|datetime] = None) -> dict[str, np.array]:
+        """
+        Helper function to calculate the derivatives with respect to maturity time T of the affine price
+        intercept and coefficient terms A_t^{T} and B_{t}^{T}, where P_{t}^{T} = e^{ A_t^T + <B_t^T, x_t>}.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        self._create_bond_price_coeffs(maturity_date, purchase_date)
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
+                                                            maturity_date,
+                                                            self.day_count_convention)
+
+        derivatives = {
+            'coefficients': self._calculate_coeff_deriv_wrt_maturity(accrual),
+            'intercept'   : self._calculate_intercept_deriv_wrt_maturity(accrual)
+        }
+        return derivatives
+
+    def _calculate_coeff_deriv_wrt_maturity(self, accrual: float) -> np.array:
+        """
+        Helper function to calculate the derivative with respect to maturity time T of the affine price
+        coefficient term B_{t}^{T}, where P_{t}^{T} = e^{ A_t^T + <B_t^T, x_t>}.
+        """
+        exp_negative_eigen_times_accrual = np.exp(-self.reversion_matrix_eigenvalues * accrual)
+        exp_reversion = self.reversion_matrix_eigenvectors @ \
+                        np.diag(exp_negative_eigen_times_accrual) @ \
+                        self.reversion_matrix_eigenvectors.T
+
+        return -exp_reversion @ self.short_rate_coefficients
+
+    def _calculate_intercept_deriv_wrt_maturity(self, accrual: float) -> np.array:
+        """
+        Helper function to calculate the derivative with respect to maturity time T of the affine price
+        intercept term A_{t}^{T}, where P_{t}^{T} = e^{ A_t^T + <B_t^T, x_t>}.
+        """
+        int_1_deriv = -self.short_rate_intercept
+        int_2_deriv = self.price_state_variable_coeffs['coefficients'].T @ self.reversion_matrix @ self.reversion_level
+        int_3_deriv = 0.5 * self.price_state_variable_coeffs['coefficients'].T @ self.C_mat @ self.price_state_variable_coeffs['coefficients']
+        return int_1_deriv + int_2_deriv + int_3_deriv
 
 
 
