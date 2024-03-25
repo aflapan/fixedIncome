@@ -82,7 +82,8 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
                             maturity_date: date | datetime,
                             purchase_date: Optional[date | datetime] = None) -> float:
         """
-        Returns the conditional mean of the Vasicek short rate given the initial value of the short rate r_0.
+        Returns the conditional mean of the Vasicek Model short rate at a given maturity date T given
+        the reference purchase date t_0.
         """
         if purchase_date is None:
             purchase_date = self.start_date_time
@@ -319,6 +320,38 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
             state_variables_diffusion_process=diffusion_process
         )
 
+    def expected_state_variable_mean(self,
+                                     maturity_date: date | datetime,
+                                     purchase_date: Optional[date | datetime] = None) -> np.array:
+        """
+        Returns the conditional mean of the MultivariateVasicekModel state variables at a given maturity date T given
+        the reference purchase date t_0.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
+                                                            maturity_date,
+                                                            self.day_count_convention)
+        mat_exponential = self.reversion_matrix_eigenvectors \
+                          @ np.diag(np.exp(-self.reversion_matrix_eigenvalues * accrual)) \
+                          @ self.reversion_matrix_eigenvectors.T
+
+        return mat_exponential @ self.state_variables_diffusion_process(purchase_date) \
+               + (np.eye(self.dimension) - mat_exponential) @ self.reversion_level
+    def expected_short_rate(self,
+                            maturity_date: date | datetime,
+                            purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Returns the conditional mean of the Multivariate Vasicek Model short rate at a given maturity date T given
+        the reference purchase date t_0.
+        """
+        expected_state_variables = self.expected_state_variable_mean(maturity_date=maturity_date,
+                                                                     purchase_date=purchase_date)
+
+        return self.short_rate_transformation(expected_state_variables)
+
+
     def zero_coupon_bond_price(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
         Calculates the price of a zero coupon bond.
@@ -463,6 +496,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
     def instantaneous_forward_rate(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
+        Calculates the instantaneous forward rate
         """
         if purchase_date is None:
             purchase_date = self.start_date_time
