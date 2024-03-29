@@ -214,7 +214,7 @@ def test_multivaraite_yield_volatility_raises_value_error_for_bad_maturity_date(
 
 
 #----------------------------------------------------------------------
-
+# Testing results of when MultivariateVasicekModel is set to equal the standard Vasicek Model
 PASS_THRESH = 1E-13
 
 brownian_motion = BrownianMotion(start_date_time=start_time,
@@ -324,7 +324,7 @@ def test_multivariate_instantaneous_forward_rates_are_same_as_vasicek() -> None:
         multi_instantaneous_fr = mvm.instantaneous_forward_rate(maturity_date=datetime_obj)
         assert abs(vm_instantaneous_fr - multi_instantaneous_fr) < PASS_THRESH
 
-def test_expected_short_rates_are_same_as_vasicek() -> None:
+def test_multivariate_expected_short_rates_are_same_as_vasicek() -> None:
     """
     Tests that the MiltivariateVasicekModel has the same expected short rate across a range of maturity dates
     as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
@@ -333,3 +333,13 @@ def test_expected_short_rates_are_same_as_vasicek() -> None:
         vm_expected_sr = vm.expected_short_rate(maturity_date=datetime_obj)
         multi_expected_sr = mvm.expected_short_rate(maturity_date=datetime_obj)
         assert abs(vm_expected_sr - multi_expected_sr) < PASS_THRESH
+
+def test_multivariate_short_rate_variances_are_same_as_vasicek() -> None:
+    """
+    Tests that the MiltivariateVasicekModel has the same expected short rate across a range of maturity dates
+    as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
+    """
+    for datetime_obj in admissible_dates:
+        vm_variance = vm.short_rate_variance(maturity_date=datetime_obj)
+        multi_variance = mvm.short_rate_variance(maturity_date=datetime_obj)
+        assert abs(vm_variance - multi_variance) < PASS_THRESH

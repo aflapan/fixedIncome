@@ -67,12 +67,17 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
         self.convexity_limit = -self.volatility**2 / (2 * self.reversion_speed**2)
 
 
-    def short_rate_variance(self, datetime_obj: datetime) -> float:
+    def short_rate_variance(self,
+                            maturity_date: date | datetime,
+                            purchase_date: Optional[date | datetime] = None) -> float:
         """
         Returns the conditional variance of the Vasicek Model, equal to sigma**2 / 2*a * (1- exp(-2 k * (t-t_0))).
         """
-        accrual = DayCountCalculator.compute_accrual_length(self.start_date_time,
-                                                            datetime_obj,
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
+                                                            maturity_date,
                                                             self.day_count_convention)
 
         shrinkage_factor = 1 - math.exp(-2 * self.reversion_speed * accrual)
@@ -351,8 +356,44 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
         return self.short_rate_transformation(expected_state_variables)
 
+    def state_variable_covariance(self,
+                                  maturity_date: date | datetime,
+                                  purchase_date: Optional[date | datetime] = None) -> np.ndarray:
+        """
+        Calculates the covariance matrix of the state variables at a given maturity date conditioned
+        on the values at the purchase date.
+        Reference, pages 308 - 309 of Rebonato *Bond Pricing and Yield Curve Modeling*.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
 
-    def zero_coupon_bond_price(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+        broadcast_mat = np.ones((self.dimension, self.dimension)) * self.reversion_matrix_eigenvalues
+        sum_eigenvalues = broadcast_mat + broadcast_mat.T
+        one_minus_exp_eigen_sum = 1 - np.exp(-sum_eigenvalues * accrual)
+        H_mat = self.reversion_matrix_eigenvectors.T @ self.C_mat @ self.reversion_matrix_eigenvectors
+        covar = one_minus_exp_eigen_sum * H_mat / sum_eigenvalues
+        return covar
+
+
+    def short_rate_variance(self,
+                            maturity_date: date | datetime,
+                            purchase_date: Optional[date | datetime] = None) -> float:
+        """
+
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        state_variable_covar = self.state_variable_covariance(maturity_date, purchase_date)
+        return self.short_rate_coefficients.T @ state_variable_covar @ self.short_rate_coefficients
+
+
+
+
+    def zero_coupon_bond_price(self,
+                               maturity_date: date | datetime,
+                               purchase_date: Optional[date | datetime] = None) -> float:
         """
         Calculates the price of a zero coupon bond.
         """
