@@ -336,10 +336,21 @@ def test_multivariate_expected_short_rates_are_same_as_vasicek() -> None:
 
 def test_multivariate_short_rate_variances_are_same_as_vasicek() -> None:
     """
-    Tests that the MiltivariateVasicekModel has the same expected short rate across a range of maturity dates
+    Tests that the MiltivariateVasicekModel has the same short rate volatilities across a range of maturity dates
     as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
     """
     for datetime_obj in admissible_dates:
         vm_variance = vm.short_rate_variance(maturity_date=datetime_obj)
         multi_variance = mvm.short_rate_variance(maturity_date=datetime_obj)
+        assert abs(vm_variance - multi_variance) < PASS_THRESH
+
+
+def test_multivariate_instantaneous_short_rate_volatilities_are_same_as_vasicek() -> None:
+    """
+    Tests that the MiltivariateVasicekModel has the same instantaneous forward rate volatilites across a range of maturity dates
+    as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
+    """
+    for datetime_obj in admissible_dates[1:]:
+        vm_variance = vm.instantaneous_forward_rate_volatility(maturity_date=datetime_obj)
+        multi_variance = mvm.instantaneous_forward_rate_volatility(maturity_date=datetime_obj)
         assert abs(vm_variance - multi_variance) < PASS_THRESH

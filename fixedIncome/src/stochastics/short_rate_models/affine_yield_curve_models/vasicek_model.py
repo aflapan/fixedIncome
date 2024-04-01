@@ -227,6 +227,23 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
         forward_rate = -derivatives['intercept'] - derivatives['coefficient'] * short_rate
         return forward_rate
 
+    def instantaneous_forward_rate_volatility(self,
+                                              maturity_date: date | datetime,
+                                              purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Calculates the volatility of the instantaneous forward rate at a maturity date given a reference purchase date.
+        Reference Equation (16.68) in Rebonato *Bond Pricing and Yield Curve Modeling*, page 274.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date,
+                                                            maturity_date,
+                                                            self.day_count_convention)
+
+        return self.volatility * math.exp(-accrual * self.reversion_speed)
+
+
     def average_expected_short_rate(self,
                                     maturity_date: date | datetime,
                                     purchase_date: Optional[date | datetime] = None) -> float:
@@ -380,15 +397,14 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
                             maturity_date: date | datetime,
                             purchase_date: Optional[date | datetime] = None) -> float:
         """
-
+        Calculates the variance of the short rate at a given maturity date conditioned
+        on the values of the state variances at the purchase date.
         """
         if purchase_date is None:
             purchase_date = self.start_date_time
 
         state_variable_covar = self.state_variable_covariance(maturity_date, purchase_date)
         return self.short_rate_coefficients.T @ state_variable_covar @ self.short_rate_coefficients
-
-
 
 
     def zero_coupon_bond_price(self,
@@ -537,7 +553,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
     def instantaneous_forward_rate(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
-        Calculates the instantaneous forward rate
+        Calculates the instantaneous forward rate at a maturity date given a reference purchase date.
         """
         if purchase_date is None:
             purchase_date = self.start_date_time
@@ -548,6 +564,44 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         state_variables = self.state_variables_diffusion_process(purchase_date)
         forward_rate = -derivatives['intercept'] - derivatives['coefficients'] @ state_variables
         return forward_rate
+
+    def instantaneous_forward_rate_covariance(self,
+                                              maturity_dates: Iterable[date | datetime],
+                                              purchase_date: Optional[date | datetime] = None) -> np.ndarray:
+        """
+        Returns the covariance matrix of the instantaneous forward rates of various maturity dates given the
+        baseline purchase date.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if min(maturity_dates) <= purchase_date:
+            raise ValueError(
+                f'Minimum maturity datetime {min(maturity_dates)} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        maturity_dates = list(maturity_dates)
+        B_mat = np.empty((self.dimension, len(maturity_dates)))
+        for index, maturity in enumerate(maturity_dates):
+            self._create_bond_yield_coeffs(maturity_date=maturity, purchase_date=purchase_date)
+            B_mat[:, index] = -self._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=maturity,
+                                                                                         purchase_date=purchase_date)['coefficients']
+        return B_mat.T @ self.C_mat @ B_mat
+
+
+    def instantaneous_forward_rate_volatility(self,
+                                              maturity_date: date | datetime,
+                                              purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Returns the volatility of the instantaneous forward rate at a maturity date given the
+        baseline purchase date. The volatility is the square root of the variance.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        covar_mat = self.instantaneous_forward_rate_covariance(maturity_dates=[maturity_date],
+                                                               purchase_date=purchase_date)
+
+        return math.sqrt(float(covar_mat))
 
 
     def _calculate_bond_price_coeff_derivatives_wrt_maturity(self, maturity_date: date|datetime, purchase_date: Optional[date|datetime] = None) -> dict[str, np.array]:
