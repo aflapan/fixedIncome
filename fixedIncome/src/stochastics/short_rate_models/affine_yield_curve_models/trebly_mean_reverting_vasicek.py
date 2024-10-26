@@ -109,7 +109,7 @@ if __name__ == '__main__':
     long_term_mean = 0.10555  # 10.555%
 
     start_time = datetime(2024, 1, 1, 0)
-    end_time = datetime(2124, 12, 31, 23, 59)
+    end_time = datetime(2053, 12, 31, 23, 59)
 
     tmr_vm = TreblyMeanRevertingVasicek(
         short_rate_reversion_speed=short_rate_reversion,

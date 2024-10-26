@@ -71,7 +71,7 @@ if __name__ == '__main__':
     from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 
     short_rate_reversion = 0.5
-    long_reversion = 0.1
+    long_reversion = 0.05
 
     short_rate_vol = 50/10_000
     long_vol = 25/10_000
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     long_term_mean = 0.05
 
     start_time = datetime(2024, 1, 1, 0)
-    end_time = datetime(2123, 12, 31, 23, 59)
+    end_time = datetime(2053, 12, 31, 23, 59)
 
     dmr_vm = DoublyMeanRevertingVasicek(
         short_rate_reversion_speed=short_rate_reversion,
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     plt.figure(figsize=(13, 5))
     for seed in range(NUM_PATHS):
 
-        dmr_vm.generate_path(starting_state_space_values=starting_state_space_vals, # TODO: investigate whether or not this is modified
+        dmr_vm.generate_path(starting_state_space_values=starting_state_space_vals,
                              set_path=True,
                              seed=seed)
 

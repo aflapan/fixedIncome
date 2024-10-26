@@ -317,7 +317,8 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         d X_t = K(theta - X_t)dt + S dW_t
         and r_t = mu + <g, X_t>.
 
-    where K is
+    where K is a diagonalizable reversion matrix, theta is the reversion level vector, X_t are the state variable
+    process, and S is a volatiltiy matrix.
     -------------------------------------------------------------
     Reference, Chapter 18 of Rebonato's *Bond Pricing and Yield Curve Modelling*, pages 299 -328.
     """
@@ -497,16 +498,16 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
     def _create_bond_price_coefficient_term(self, accrual: float, reversion_inv: np.ndarray) -> np.array:
         """
-        Helper method to calculate the bond price coefficient term
+        Helper method to calculate the bond price coefficient term. From Equation (18.141)
         """
         p = self.brownian_motion.dimension
-        negative_exp_eigen_times_accrual = np.exp( -self.reversion_matrix_eigenvalues * accrual)
+        exp_negative_eigen_times_accrual = np.exp(-self.reversion_matrix_eigenvalues * accrual)
         exp_reversion = self.reversion_matrix_eigenvectors @ \
-                        np.diag(negative_exp_eigen_times_accrual) @ \
+                        np.diag(exp_negative_eigen_times_accrual) @ \
                         self.reversion_matrix_eigenvectors_inv
 
 
-        B = (exp_reversion - np.eye(p)) @ reversion_inv @ self.short_rate_coefficients
+        B = (exp_reversion.T - np.eye(p)) @ reversion_inv.T @ self.short_rate_coefficients
         return B
 
     def _create_bond_price_intercept_term(self, accrual: float, reversion_inv: np.ndarray) -> float:
