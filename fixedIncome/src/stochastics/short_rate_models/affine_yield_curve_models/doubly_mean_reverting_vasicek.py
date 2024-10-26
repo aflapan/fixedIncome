@@ -80,7 +80,7 @@ if __name__ == '__main__':
     long_term_mean = 0.05
 
     start_time = datetime(2024, 1, 1, 0)
-    end_time = datetime(2053, 12, 31, 23, 59)
+    end_time = datetime(2123, 12, 31, 23, 59)
 
     dmr_vm = DoublyMeanRevertingVasicek(
         short_rate_reversion_speed=short_rate_reversion,
@@ -93,21 +93,24 @@ if __name__ == '__main__':
         end_datetime=end_time
     )
 
-    starting_state_space_vals = np.array([0.075, 0.05])
-    NUM_PATHS = 10
+    NUM_PATHS = 1
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
                                                    max_dates=1_000_000)
 
+    starting_state_space_vals = np.array([0.075, 0.05])
+
     plt.figure(figsize=(13, 5))
     for seed in range(NUM_PATHS):
-        dmr_vm.generate_path(starting_state_space_values=starting_state_space_vals,
+
+        dmr_vm.generate_path(starting_state_space_values=starting_state_space_vals, # TODO: investigate whether or not this is modified
                              set_path=True,
                              seed=seed)
 
         values = [dmr_vm(date_obj)*100 for date_obj in dates]
-        plt.plot(dates, values, linewidth=0.5)
+        plt.plot(dates, values, linewidth=0.5, color='tab:blue')
 
     plt.axhline(dmr_vm.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
     plt.grid(alpha=0.25)

@@ -90,7 +90,7 @@ class DiffusionProcess(abc.Callable):
         """
         brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
         solution = np.empty((brownian_increments.shape[0], brownian_increments.shape[1] + 1))
-        current_val = starting_value
+        current_val = starting_value.copy()
         time = 0
         for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments)):  # used to be dt_increments.T
             solution[:, index] = current_val

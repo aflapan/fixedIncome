@@ -514,28 +514,35 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         Reference Equations (18.142) to (18.189).
         """
         p = self.brownian_motion.dimension
-        reversion_inv_times_coeff = reversion_inv @ self.short_rate_coefficients
+        reversion_transpose_inv_times_coeff = reversion_inv.T @ self.short_rate_coefficients
         Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)
         transformed_Dt = self.reversion_matrix_eigenvectors @ Dt_mat @ self.reversion_matrix_eigenvectors_inv
-        M_mat = self.reversion_matrix_eigenvectors_inv @ self.C_mat @ self.reversion_matrix_eigenvectors
+        M_mat = self.reversion_matrix_eigenvectors_inv @ self.C_mat @ self.reversion_matrix_eigenvectors_inv.T  # Equation (18.186)
         eigen_plus_eigen = np.ones((p, p)) * self.reversion_matrix_eigenvalues \
                            + (np.ones((p, p)) * self.reversion_matrix_eigenvalues.T).T
 
-        F_mat = M_mat * (1- np.exp(-eigen_plus_eigen*accrual)) / eigen_plus_eigen
-        transformed_F_mat = self.reversion_matrix_eigenvectors @ F_mat @ self.reversion_matrix_eigenvectors_inv
+        F_mat = M_mat * (1 - np.exp(-eigen_plus_eigen*accrual)) / eigen_plus_eigen  # Equation (18.188)
 
+        # Equation (18.150)
         int_1 = -self.short_rate_intercept * accrual
+
+        # Equation (18.167)
         int_2 = self.short_rate_coefficients.T @ (transformed_Dt @ self.reversion_level - self.reversion_level * accrual)
 
-        int_3_d = 0.5 * reversion_inv_times_coeff.T @ self.C_mat @ reversion_inv_times_coeff * accrual
+        # Equation (18.173)
+        int_3_d = 0.5 * reversion_transpose_inv_times_coeff.T @ self.C_mat @ reversion_transpose_inv_times_coeff * accrual
 
-        int_3_c = -0.5 * reversion_inv_times_coeff.T @ transformed_Dt @ self.C_mat @ reversion_inv_times_coeff
+        # Equation (18.178)
+        int_3_c = -0.5 * reversion_transpose_inv_times_coeff.T @ transformed_Dt @ self.C_mat @ reversion_transpose_inv_times_coeff
 
-        int_3_b = -0.5 * reversion_inv_times_coeff.T @ self.C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
-                  np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors_inv @ \
+        # Equation (18.183)
+        int_3_b = -0.5 * reversion_transpose_inv_times_coeff.T @ self.C_mat @ (self.reversion_matrix_eigenvectors_inv.T) @ Dt_mat @ \
+                  np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors.T @ \
                   self.short_rate_coefficients
 
-        int_3_a = 0.5 * reversion_inv_times_coeff.T @ transformed_F_mat @ reversion_inv_times_coeff
+        # Equations (18.186) - (18.188)
+        int_3_a = 0.5 * reversion_transpose_inv_times_coeff.T @ self.reversion_matrix_eigenvectors @ F_mat @ \
+                  np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors.T @ self.short_rate_coefficients
 
         int_3 = int_3_a + int_3_b + int_3_c + int_3_d
         return int_1 + int_2 + int_3

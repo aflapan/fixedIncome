@@ -139,8 +139,16 @@ if __name__ == '__main__':
 
     values = [tmr_vm(date_obj)*100 for date_obj in dates]
     plt.figure(figsize=(13, 5))
-    plt.plot(dates, values)
+    plt.plot(dates, values,  linewidth=0.75)
     plt.axhline(tmr_vm.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
+    plt.grid(alpha=0.25)
+    plt.show()
+
+
+    # Yield plot
+    yields = [tmr_vm.zero_coupon_bond_yield(date_obj)*100 for date_obj in dates[1:]]
+    plt.figure(figsize=(13, 5))
+    plt.plot(dates[1:], yields,  linewidth=0.75)
     plt.grid(alpha=0.25)
     plt.show()
 
