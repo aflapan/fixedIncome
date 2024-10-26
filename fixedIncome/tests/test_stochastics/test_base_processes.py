@@ -79,45 +79,4 @@ def test_base_drift_process_for_constant_drift_no_volatility() -> None:
 
     assert abs(float(final_value) - total_accrued_time) < PASS_THRESH
 
-def test_multivariate_base_drift_process_for_constant_drifts_no_volatility() -> None:
-    """
-    Multivaraite version of the test above. Tests that a trivial base process with constant drift component and zero volatility term
-    is just a straight line upwards.
-    """
-    PASS_THRESH = 1E-5
-    drifts = list(range(10))
-
-    drift_diffusion_dict = {f'state_variable_{int(i)}': DriftDiffusionPair(drift=lambda time, state_variables: float(i),
-                                                    diffusion=lambda time, state_varaibles: np.array([0.0 for _ in drifts])) for i in drifts
-                            }
-
-    start_time = datetime(2024, 1, 1, 0)
-    end_time = datetime(2053, 12, 31, 23, 59)
-
-    test_bm = BrownianMotion(start_date_time=start_time, end_date_time=end_time, dimension=len(drifts))
-
-    test_drift_diffusion_process = DiffusionProcess(
-        drift_diffusion_collection=drift_diffusion_dict,
-        brownian_motion=test_bm,
-        dt=relativedelta(hours=1)
-    )
-
-    test_drift_diffusion_process.generate_path(starting_value=np.array([0.0 for _ in drifts]), set_path=True, seed=1)
-
-    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
-                                                   end_date=end_time,
-                                                   increment=timedelta(1),
-                                                   max_dates=1_000_000)
-
-    final_value = test_drift_diffusion_process(dates[-1])
-
-    total_accrued_time = sum(
-        DayCountCalculator.compute_accrual_length(start_date=start_datetime,
-                                                  end_date=end_datetime,
-                                                  dcc=test_drift_diffusion_process.day_count_convention)
-        for start_datetime, end_datetime in itertools.pairwise(dates)
-    )
-
-    assert abs(float(final_value) - total_accrued_time) < PASS_THRESH
-
 

@@ -2,9 +2,8 @@
 Unit tests for fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.trebly_mean_reverting_vasicek.py
 """
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import numpy as np
-import matplotlib.pyplot as plt
 
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
 from fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.vasicek_model import VasicekModel
@@ -38,7 +37,7 @@ dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                increment=timedelta(1),
                                                max_dates=1_000_000)
 
-test_tmr_vm = TreblyMeanRevertingVasicek(
+tmr_vm = TreblyMeanRevertingVasicek(
     short_rate_reversion_speed=short_rate_reversion,
     short_rate_volatility=short_rate_vol,
     medium_rate_reversion_speed=medium_rate_reversion,
@@ -53,8 +52,6 @@ test_tmr_vm = TreblyMeanRevertingVasicek(
     end_datetime=end_time
 )
 
-
-
 def test_long_term_process_is_single_variable_vasicek() -> None:
     """
     Tests that the sample path for the long term rate matches exactly what would be given in a single-variable Vasicek
@@ -62,22 +59,22 @@ def test_long_term_process_is_single_variable_vasicek() -> None:
     """
     PASS_THRESH = 1E-10
 
-    test_tmr_vm.generate_path(starting_state_space_values=starting_state_space_vals,
-                              set_path=True,
-                              seed=1)
+    tmr_vm.generate_path(starting_state_space_values=starting_state_space_vals,
+                         set_path=True,
+                         seed=1)
 
     test_bm = BrownianMotion(start_date_time=start_time, end_date_time=end_time)
 
-    test_vm = VasicekModel(
+    vm = VasicekModel(
         reversion_level=long_term_mean,
         reversion_speed=long_reversion,
         volatility=long_vol,
         brownian_motion=test_bm
     )
 
-    test_vm.generate_path(starting_state_space_values=starting_state_space_vals[0], seed=1, set_path=True)
+    vm.generate_path(starting_state_space_values=starting_state_space_vals[0], seed=1, set_path=True)
 
-    assert all(abs(test_vm(date_obj) - test_tmr_vm.state_variables_diffusion_process(date_obj)[0]) < PASS_THRESH
+    assert all(abs(vm(date_obj) - tmr_vm.state_variables_diffusion_process(date_obj)[0]) < PASS_THRESH
                for date_obj in dates)
 
 
@@ -88,12 +85,12 @@ def test_medium_term_process_is_doubly_mean_reverting_vasicek() -> None:
     """
     PASS_THRESH = 1E-10
 
-    test_tmr_vm.generate_path(starting_state_space_values=starting_state_space_vals,
-                              set_path=True,
-                              seed=1)
+    tmr_vm.generate_path(starting_state_space_values=starting_state_space_vals,
+                         set_path=True,
+                         seed=1)
 
 
-    test_dmr_vm = DoublyMeanRevertingVasicek(
+    dmr_vm = DoublyMeanRevertingVasicek(
         short_rate_reversion_speed=medium_rate_reversion,
         short_rate_volatility=medium_rate_vol,
         long_term_mean=long_term_mean,
@@ -104,7 +101,8 @@ def test_medium_term_process_is_doubly_mean_reverting_vasicek() -> None:
         end_datetime=end_time
     )
 
-    test_dmr_vm.generate_path(starting_state_space_values=starting_state_space_vals[:2], seed=1, set_path=True)
+    dmr_vm.generate_path(starting_state_space_values=starting_state_space_vals[:2], seed=1, set_path=True)
 
-    assert all(abs(test_dmr_vm.state_variables_diffusion_process(date_obj)[1] - test_tmr_vm.state_variables_diffusion_process(date_obj)[1]) < PASS_THRESH
+    assert all(abs(dmr_vm.state_variables_diffusion_process(date_obj)[1] -
+                   tmr_vm.state_variables_diffusion_process(date_obj)[1]) < PASS_THRESH
                for date_obj in dates)

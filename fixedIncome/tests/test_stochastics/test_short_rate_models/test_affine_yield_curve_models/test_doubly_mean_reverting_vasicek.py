@@ -66,7 +66,3 @@ def test_long_term_process_is_single_variable_vasicek() -> None:
 
     assert all(abs(test_vm(date_obj) - test_dmr_vm.state_variables_diffusion_process(date_obj)[0]) < PASS_THRESH
                for date_obj in dates)
-
-
-
-

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from typing import Optional, NamedTuple, Callable
 import numpy as np
+import copy
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion, datetime_to_path_call
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 
@@ -90,7 +91,7 @@ class DiffusionProcess(abc.Callable):
         """
         brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
         solution = np.empty((brownian_increments.shape[0], brownian_increments.shape[1] + 1))
-        current_val = starting_value.copy()
+        current_val = copy.deepcopy(starting_value)
         time = 0
         for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments)):  # used to be dt_increments.T
             solution[:, index] = current_val
