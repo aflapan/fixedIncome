@@ -9,7 +9,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import functools
 import multiprocessing
+import itertools
 
+from fixedIncome.src.assets.base_cashflow import CashflowKeys
 from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryBond, ONE_BASIS_POINT
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator, DayCountConvention
 from fixedIncome.src.scheduling_tools.scheduler import Scheduler
@@ -128,7 +130,7 @@ def compute_protoflio_pvs(new_date, data) -> tuple[ float | None, float | None ]
 
 frzn_pv = functools.partial(compute_protoflio_pvs, data=data)
 date_range = Scheduler.generate_dates_by_increments(start_date=date(1993, 9, 3),
-                                                        end_date=date(1993, 9, 10),
+                                                        end_date=date(2000, 9, 3),
                                                         increment=timedelta(1))
 
 if __name__ == '__main__':
@@ -146,5 +148,6 @@ if __name__ == '__main__':
     plt.xlabel('Date')
     plt.ylabel('Present Value ($)')
     plt.grid(alpha=0.25)
-    plt.show()
+    plt.legend(['Bond Portfolio', 'Hedge Portfolio'], frameon=False)
     plt.savefig('../../docs/images/rates/portfolio_and_hedge_present_value_across_time.png')
+    plt.show()

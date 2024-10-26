@@ -4,12 +4,9 @@ This script contains a class for generating multi-dimensional Brownian Motion pa
 Unit tests are contained in fixedIncome.tests.test_stochastics.test_brownian_motion.py
 """
 import bisect
-import itertools
-
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-import math
 import numpy as np
 from typing import Optional
 from collections.abc import Callable

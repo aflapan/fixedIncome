@@ -14,6 +14,7 @@ from fixedIncome.src.curves.base_curve import DiscountCurve, KnotValuePair, Curv
 from fixedIncome.src.curves.curve_enumerations import CurveIndex, EndBehavior, InterpolationMethod
 from fixedIncome.src.stochastics.base_processes import DiffusionProcess
 
+
 class ShortRateModel(DiffusionProcess):
 
     def __init__(self,

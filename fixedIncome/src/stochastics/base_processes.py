@@ -27,7 +27,7 @@ class DiffusionProcess(abc.Callable):
     def __init__(self,
                  drift_diffusion_collection: dict[str: DriftDiffusionPair],
                  brownian_motion: BrownianMotion,
-                 dt: timedelta|relativedelta = relativedelta(hours=1)) -> None:
+                 dt: timedelta | relativedelta = relativedelta(hours=1)) -> None:
 
         self.brownian_motion = brownian_motion
         self._start_date_time = self.brownian_motion.start_date_time
@@ -37,7 +37,7 @@ class DiffusionProcess(abc.Callable):
 
         self.drift_diffusion_collection = drift_diffusion_collection
         self._drift_diffusion_name_to_index = {name: index
-                                               for index, name in enumerate(self.drift_diffusion_collection.keys())}
+                                               for index, name in enumerate(self.drift_diffusion_collection.keys())}  # This is the issue, what guarantee is there that order is preserved?
 
         self._dimension = len(self.drift_diffusion_collection)
         self._path = None
@@ -88,12 +88,11 @@ class DiffusionProcess(abc.Callable):
         """
 
         """
-
         brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
         solution = np.empty((brownian_increments.shape[0], brownian_increments.shape[1] + 1))
         current_val = starting_value
         time = 0
-        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments.T)):
+        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments)):  # used to be dt_increments.T
             solution[:, index] = current_val
             next_step = np.zeros((self.dimension,))
 

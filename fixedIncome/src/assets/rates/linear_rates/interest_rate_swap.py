@@ -1,7 +1,7 @@
 """
 This script contains classes for a Term interest rate swap and Overnight Interest Rate Swap.
 
-Unit tests contained in tests/test_assets/test_rates_test_linear_rates/test_interest_rate_swap.py
+Unit tests contained in tests/test_assets/test_rates/test_linear_rates/test_interest_rate_swap.py
 """
 from enum import Enum
 from datetime import date

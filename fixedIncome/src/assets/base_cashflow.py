@@ -1,5 +1,7 @@
 """
 A base class to represent a cashflow consisting of payment dates and payment amounts.
+
+Unit tests contained in the script
 """
 from __future__ import annotations
 from datetime import date
@@ -57,7 +59,7 @@ class Cashflow(Iterable):
         """
         bisect.insort_right(self._schedule, payment, key=lambda payoff: payoff.payment_date)
 
-    # Conversion methodsan introduction to git
+    # Conversion methods
     def to_series(self) -> pd.Series:
         return pd.Series(self.get_payment_amounts(), index=self.get_payment_dates())
 

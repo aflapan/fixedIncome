@@ -10,7 +10,7 @@ from dateutil.relativedelta import relativedelta
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Callable
 from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
 from fixedIncome.src.stochastics.base_processes import DiffusionProcess
 from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel
@@ -18,6 +18,23 @@ from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
 from fixedIncome.src.stochastics.short_rate_models.affine_model_mixin import AffineModelMixin
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+
+def create_affine_function(short_rate_coefficients, short_rate_intercept) -> Callable[[np.array], float]:
+    """
+    Returns the affine function intercept + <coeff, state variables>
+    """
+    return lambda state_variables: short_rate_intercept + short_rate_coefficients @ state_variables
+
+
+def create_constant_drift_diffusion_pair(reversion_level, reversion_speed, diffusion_term):
+    """
+    TODO: Modify the vasicek_drift_diffusion to handle multivariate diffusion coefficients
+    Alleviates the closure issue with anaonymous functions.
+    """
+    return DriftDiffusionPair(
+        drift=lambda t, state_variables: reversion_speed @ (reversion_level - state_variables),
+        diffusion=lambda time, state_variables: diffusion_term
+    )
 
 
 def vasicek_drift_diffusion(reversion_level: float, reversion_scale: float, volatility: float) -> DriftDiffusionPair:
@@ -248,11 +265,11 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
                                     maturity_date: date | datetime,
                                     purchase_date: Optional[date | datetime] = None) -> float:
         """
-        Calculates the average from the purchase date t to the maturity
+        Calculates the average across time from the purchase date t to the maturity
         date T of the conditional short rate mean in the vasicek model, conditioned on information up to time t.
         That this, this method calculates:
 
-           1/ (T-t) *  int_{t}^{T} E[ r_s | F_t] ds
+           1/(T-t) *  int_{t}^{T} E[ r_s | F_t] ds
         where E[r_s | F_t] is the conditional expectation of the short rate at time s on information know at t, for s >= t.
         """
         if purchase_date is None:
@@ -326,19 +343,25 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         self.volatility_matrix = volatility_matrix
 
         self.reversion_matrix_eigenvalues, self.reversion_matrix_eigenvectors = np.linalg.eig(self.reversion_matrix)
+        self.reversion_matrix_eigenvectors_inv = np.linalg.inv(self.reversion_matrix_eigenvectors)
         self.C_mat = self.volatility_matrix @ self.volatility_matrix.T
 
+        drift_diffusion_collection = {}
+        for i in range(brownian_motion.dimension):
+            drift_diffusion_collection[f'state_variable_{i}'] = create_constant_drift_diffusion_pair(
+                reversion_level=self.reversion_level,
+                reversion_speed=self.reversion_matrix[i, :],
+                diffusion_term=self.volatility_matrix[i, :]
+            )
+
         diffusion_process = DiffusionProcess(
-            drift_diffusion_collection={
-                f'state space variable {i}': DriftDiffusionPair(
-                    drift=lambda t, X: self.reversion_matrix[i, :] @ (self.reversion_level - X),
-                    diffusion=lambda t, X: self.volatility_matrix[i, :]) for i in range(brownian_motion.dimension)
-            },
+            drift_diffusion_collection=drift_diffusion_collection,
             brownian_motion=brownian_motion,
             dt=dt)
 
         super().__init__(
-            short_rate_transformation=lambda state_variables: self.short_rate_intercept + self.short_rate_coefficients @ state_variables,
+            short_rate_transformation=create_affine_function(short_rate_coefficients=short_rate_coefficients,
+                                                             short_rate_intercept=short_rate_intercept),
             state_variables_diffusion_process=diffusion_process
         )
 
@@ -357,7 +380,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
                                                             self.day_count_convention)
         mat_exponential = self.reversion_matrix_eigenvectors \
                           @ np.diag(np.exp(-self.reversion_matrix_eigenvalues * accrual)) \
-                          @ self.reversion_matrix_eigenvectors.T
+                          @ self.reversion_matrix_eigenvectors_inv
 
         return mat_exponential @ self.state_variables_diffusion_process(purchase_date) \
                + (np.eye(self.dimension) - mat_exponential) @ self.reversion_level
@@ -388,7 +411,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         broadcast_mat = np.ones((self.dimension, self.dimension)) * self.reversion_matrix_eigenvalues
         sum_eigenvalues = broadcast_mat + broadcast_mat.T
         one_minus_exp_eigen_sum = 1 - np.exp(-sum_eigenvalues * accrual)
-        H_mat = self.reversion_matrix_eigenvectors.T @ self.C_mat @ self.reversion_matrix_eigenvectors
+        H_mat = self.reversion_matrix_eigenvectors_inv @ self.C_mat @ self.reversion_matrix_eigenvectors
         covar = one_minus_exp_eigen_sum * H_mat / sum_eigenvalues
         return covar
 
@@ -463,9 +486,10 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
             purchase_date = self.start_date_time
 
         accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+
         reversion_inv = self.reversion_matrix_eigenvectors @ \
                         np.diag(1 / self.reversion_matrix_eigenvalues) @ \
-                        self.reversion_matrix_eigenvectors.T
+                        self.reversion_matrix_eigenvectors_inv
 
         B = self._create_bond_price_coefficient_term(accrual, reversion_inv)
         A = self._create_bond_price_intercept_term(accrual, reversion_inv)
@@ -479,7 +503,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         negative_exp_eigen_times_accrual = np.exp( -self.reversion_matrix_eigenvalues * accrual)
         exp_reversion = self.reversion_matrix_eigenvectors @ \
                         np.diag(negative_exp_eigen_times_accrual) @ \
-                        self.reversion_matrix_eigenvectors.T
+                        self.reversion_matrix_eigenvectors_inv
 
 
         B = (exp_reversion - np.eye(p)) @ reversion_inv @ self.short_rate_coefficients
@@ -492,13 +516,13 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         p = self.brownian_motion.dimension
         reversion_inv_times_coeff = reversion_inv @ self.short_rate_coefficients
         Dt_mat = np.diag((1 - np.exp(-self.reversion_matrix_eigenvalues * accrual)) / self.reversion_matrix_eigenvalues)
-        transformed_Dt = self.reversion_matrix_eigenvectors @ Dt_mat @ self.reversion_matrix_eigenvectors.T
-        M_mat = self.reversion_matrix_eigenvectors.T @ self.C_mat @ self.reversion_matrix_eigenvectors
+        transformed_Dt = self.reversion_matrix_eigenvectors @ Dt_mat @ self.reversion_matrix_eigenvectors_inv
+        M_mat = self.reversion_matrix_eigenvectors_inv @ self.C_mat @ self.reversion_matrix_eigenvectors
         eigen_plus_eigen = np.ones((p, p)) * self.reversion_matrix_eigenvalues \
                            + (np.ones((p, p)) * self.reversion_matrix_eigenvalues.T).T
 
         F_mat = M_mat * (1- np.exp(-eigen_plus_eigen*accrual)) / eigen_plus_eigen
-        transformed_F_mat = self.reversion_matrix_eigenvectors @ F_mat @ self.reversion_matrix_eigenvectors.T
+        transformed_F_mat = self.reversion_matrix_eigenvectors @ F_mat @ self.reversion_matrix_eigenvectors_inv
 
         int_1 = -self.short_rate_intercept * accrual
         int_2 = self.short_rate_coefficients.T @ (transformed_Dt @ self.reversion_level - self.reversion_level * accrual)
@@ -508,7 +532,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         int_3_c = -0.5 * reversion_inv_times_coeff.T @ transformed_Dt @ self.C_mat @ reversion_inv_times_coeff
 
         int_3_b = -0.5 * reversion_inv_times_coeff.T @ self.C_mat @ self.reversion_matrix_eigenvectors @ Dt_mat @ \
-                  np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors.T @ \
+                  np.diag(1/self.reversion_matrix_eigenvalues) @ self.reversion_matrix_eigenvectors_inv @ \
                   self.short_rate_coefficients
 
         int_3_a = 0.5 * reversion_inv_times_coeff.T @ transformed_F_mat @ reversion_inv_times_coeff
@@ -631,7 +655,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         exp_negative_eigen_times_accrual = np.exp(-self.reversion_matrix_eigenvalues * accrual)
         exp_reversion = self.reversion_matrix_eigenvectors @ \
                         np.diag(exp_negative_eigen_times_accrual) @ \
-                        self.reversion_matrix_eigenvectors.T
+                        self.reversion_matrix_eigenvectors_inv
 
         return -exp_reversion @ self.short_rate_coefficients
 

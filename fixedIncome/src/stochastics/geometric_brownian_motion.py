@@ -2,10 +2,11 @@
 
 """
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from dateutil.relativedelta import relativedelta
 import numpy as np
 from fixedIncome.src.stochastics.brownian_motion import datetime_to_path_call, BrownianMotion
-from fixedIncome.src.stochastics.base_process import DriftDiffusionPair
+from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
 
 
 def geometric_brownian_motion_drift_diffusion(drift: float, volatility: float) -> DriftDiffusionPair:
@@ -33,7 +34,7 @@ class GeometricBrownianMotion:
                  end_date_time: datetime | date,
                  dimension: int = 1,
                  correlation_matrix: Optional[np.ndarray] = None,
-                 dt: float = 1/1_000):
+                 dt: timedelta | relativedelta = relativedelta(hours=1)):
         self._start_date_time = start_date_time
         self._end_date_time = end_date_time
         self._dimension = dimension
@@ -83,16 +84,16 @@ class GeometricBrownianMotion:
         """
         drift_fxcn, diffusion_fxcn = self.drift_diffusion_pair
 
-        brownian_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
+        brownian_increments, dt_increments = self.brownian_motion.generate_increments(dt=self.dt, seed=seed)
         solution = np.empty((self.dimension,  brownian_increments.shape[1]+1))
         current_val = starting_value.flatten()
         time = 0
-        for index, shock in enumerate(brownian_increments.T):
+        for index, (shock, dt) in enumerate(zip(brownian_increments.T, dt_increments)):
             solution[:, index] = current_val
-            drift_increment = np.array([drift_fxcn(time, val) for val in current_val]) * self.dt
+            drift_increment = np.array([drift_fxcn(time, val) for val in current_val]) * dt
             diffusion_shock = np.array([diffusion_fxcn(time, val) for val in current_val]) * shock  # shock contains sqrt(dt) scaling
             current_val = current_val + drift_increment + diffusion_shock
-            time += self.dt
+            time += dt
 
         solution[:, brownian_increments.shape[1]] = current_val  # solution has one more slot
 
