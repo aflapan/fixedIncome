@@ -139,16 +139,25 @@ if __name__ == '__main__':
 
     values = [tmr_vm(date_obj)*100 for date_obj in dates]
     plt.figure(figsize=(13, 5))
-    plt.plot(dates, values,  linewidth=0.75)
+    plt.title(f'Sample Path of the Trebly-Mean Reverting Vasicek Model\n'
+              f'Model Parameters: Long-Term Mean {round(long_term_mean, 3)}, Long Term Volatiltiy {round(long_vol, 3)}\n')
     plt.axhline(tmr_vm.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
+    plt.plot(dates, [tmr_vm.state_variables_diffusion_process(date_obj)[0]*100 for date_obj in dates], linewidth=0.75)
+    plt.plot(dates, [tmr_vm.state_variables_diffusion_process(date_obj)[1] * 100 for date_obj in dates], linewidth=0.75)
+    plt.plot(dates, [tmr_vm.state_variables_diffusion_process(date_obj)[2] * 100 for date_obj in dates], linewidth=0.75)
+    plt.legend(['Long Term Mean', 'Long Term Process', 'Medium Term Process', 'Short Rate Process'], frameon=False)
     plt.grid(alpha=0.25)
+    plt.ylabel('Rate (%)')
     plt.show()
 
 
     # Yield plot
     yields = [tmr_vm.zero_coupon_bond_yield(date_obj)*100 for date_obj in dates[1:]]
     plt.figure(figsize=(13, 5))
+    plt.title(f'Zero-Coupon Bond Yields from the Trebly-Mean Reverting Vasicek Model\n'
+              f'Model Parameters: Long-Term Mean {round(long_term_mean, 3)}, Long Term Volatiltiy {round(long_vol, 3)}\n')
     plt.plot(dates[1:], yields,  linewidth=0.75)
+    plt.ylabel('Yield (%)')
     plt.grid(alpha=0.25)
     plt.show()
 
