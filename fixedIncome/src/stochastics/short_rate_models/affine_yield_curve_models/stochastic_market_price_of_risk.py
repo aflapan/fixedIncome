@@ -132,7 +132,7 @@ if __name__ == '__main__':
         medium_rate_market_price_of_risk_correlation=medium_rate_market_price_of_risk_correlation,
         start_datetime=start_time,
         end_datetime=end_time ,
-        dt = relativedelta(hours=1)
+        dt=relativedelta(hours=1)
     )
 
     starting_state_space_vals = np.array([0.05, 0.01, 0.03])
