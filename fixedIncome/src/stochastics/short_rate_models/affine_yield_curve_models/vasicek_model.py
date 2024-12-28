@@ -15,7 +15,7 @@ from fixedIncome.src.stochastics.brownian_motion import BrownianMotion
 from fixedIncome.src.stochastics.base_processes import DiffusionProcess
 from fixedIncome.src.stochastics.short_rate_models.base_short_rate_model import ShortRateModel
 from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
-from fixedIncome.src.stochastics.short_rate_models.affine_model_mixin import AffineModelMixin
+from fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.affine_model_mixin import AffineModelMixin
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
 
@@ -28,7 +28,6 @@ def create_affine_function(short_rate_coefficients, short_rate_intercept) -> Cal
 
 def create_constant_drift_diffusion_pair(reversion_level, reversion_speed, diffusion_term):
     """
-    TODO: Modify the vasicek_drift_diffusion to handle multivariate diffusion coefficients
     Alleviates the closure issue with anaonymous functions.
     """
     return DriftDiffusionPair(
@@ -212,6 +211,32 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
         term1 = (-self.price_state_variable_coeffs['coefficient'] - accrual) / (2 * self.reversion_speed**2)
         term2 = self.price_state_variable_coeffs['coefficient']**2 / (4 * self.reversion_speed)
         return (self.volatility**2 / accrual) * (term1 + term2)
+
+    def price_convexities(self,
+                          maturity_dates: Iterable[datetime|date],
+                          purchase_date: Optional[datetime] = None) -> np.array:
+        """
+
+        """
+        maturity_dates = list(maturity_dates)
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if min(maturity_dates) <= purchase_date:
+            raise ValueError(f'Minimum maturity datetime {min(maturity_dates)} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        accruals = np.array([DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+                            for maturity_date in maturity_dates])
+
+        bond_prices = np.array([self.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=purchase_date)
+                                for maturity_date in maturity_dates])
+
+        volatilities = np.array([self.yield_volatility(maturity_date=maturity_date)
+                        for maturity_date in maturity_dates])
+
+        return -0.5 * accruals**2 * bond_prices * volatilities**2
+
+
 
     def yield_volatility(self, maturity_date: date | datetime) -> float:
         """
@@ -397,6 +422,31 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
         return self.short_rate_transformation(expected_state_variables)
 
+    def average_expected_short_rate(self,
+                                    maturity_date: date | datetime,
+                                    purchase_date: Optional[date | datetime] = None) -> float:
+        """
+        Calculates the average across time from the purchase date t to the maturity
+        date T of the conditional short rate mean in the vasicek model, conditioned on information up to time t.
+        That this, this method calculates:
+
+           1/(T-t) *  int_{t}^{T} E[ r_s | F_t] ds
+        where E[r_s | F_t] is the conditional expectation of the short rate at time s on information know at t, for s >= t.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if maturity_date <= purchase_date:
+            raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+        diagonal_term = (1 - np.exp( -self.reversion_matrix_eigenvalues * accrual )) / (self.reversion_matrix_eigenvalues * accrual)
+        avg_matrix_exponential = self.reversion_matrix_eigenvectors @ np.diag(diagonal_term) @ self.reversion_matrix_eigenvectors_inv
+
+        term_1 = avg_matrix_exponential @ self.state_variables_diffusion_process(purchase_date)
+        term_2 = (self.reversion_level - avg_matrix_exponential @ self.reversion_level)  # (I - exp) theta
+        return self.short_rate_transformation(term_1 + term_2)
+
     def state_variable_covariance(self,
                                   maturity_date: date | datetime,
                                   purchase_date: Optional[date | datetime] = None) -> np.ndarray:
@@ -548,12 +598,48 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         int_3 = int_3_a + int_3_b + int_3_c + int_3_d
         return int_1 + int_2 + int_3
 
+    def price_convexities(self, maturity_dates: Iterable[datetime|date], purchase_date: Optional[datetime] = None
+                          ) -> np.array:
+        """
+        Calculates the convexity of the constant-maturity prices of zero-coupon bonds for each of the provided maturities.
+
+        See Equation (20.51) of Rebonato *Bond Pricing and Yield Curve Modeling*
+        """
+        maturity_dates = list(maturity_dates)
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if min(maturity_dates) <= purchase_date:
+            raise ValueError(f'Minimum maturity datetime {min(maturity_dates)} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        cov_matrix = self.yield_covariance_matrix( maturity_dates=maturity_dates, purchase_date=purchase_date)
+        accruals = np.array([DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
+                            for maturity_date in maturity_dates])
+
+        bond_prices = np.array([self.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=purchase_date)
+                            for maturity_date in maturity_dates])
+
+        return -0.5 * bond_prices * accruals**2 * np.diag(cov_matrix)
+
+    def yield_convexity(self,  maturity_date: datetime | date, purchase_date: Optional[datetime] = None) -> float:
+        """
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        if maturity_date <= purchase_date:
+            raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
+
+        yield_to_maturity = self.zero_coupon_bond_yield(maturity_date=maturity_date, purchase_date=purchase_date)
+        avg_expected_short_rate = self.average_expected_short_rate(maturity_date=maturity_date, purchase_date=purchase_date)
+        return yield_to_maturity - avg_expected_short_rate
+
     def yield_covariance_matrix(
-            self, maturity_dates: Iterable[datetime|date], purchase_date: Optional[datetime] = None
+            self, maturity_dates: Iterable[datetime | date], purchase_date: Optional[datetime] = None
     ) -> np.ndarray:
         """
         Returns the matrix of yield covariances, where entry Cov[i, j] is the
-        covariance between yields y_{t}^{T_i} and y_{t}^{T_j} .
+        covariance between yields y_{t}^{T_i} and y_{t}^{T_j} of zero-coupon bonds.
         """
         if purchase_date is None:
             purchase_date = self.start_date_time

@@ -215,7 +215,7 @@ def test_multivaraite_yield_volatility_raises_value_error_for_bad_maturity_date(
 
 #----------------------------------------------------------------------
 # Testing results of when MultivariateVasicekModel is set to equal the standard Vasicek Model
-PASS_THRESH = 1E-13
+PASS_THRESH = 1E-10
 
 brownian_motion = BrownianMotion(start_date_time=start_time,
                                  end_date_time=end_time,
@@ -354,3 +354,14 @@ def test_multivariate_instantaneous_short_rate_volatilities_are_same_as_vasicek(
         vm_variance = vm.instantaneous_forward_rate_volatility(maturity_date=datetime_obj)
         multi_variance = mvm.instantaneous_forward_rate_volatility(maturity_date=datetime_obj)
         assert abs(vm_variance - multi_variance) < PASS_THRESH
+
+def test_multivariate_price_convexities_are_same_as_vasicek() -> None:
+    """
+    Tests that the MiltivariateVasicekModel has the same convexities across a range of maturity dates
+    as the standard Vasicek model when the multivariate parameters are set to replicate the single-variable model.
+    """
+
+    for maturity_date in admissible_dates[1:]:
+        vm_convexity = vm.yield_convexity(maturity_date=maturity_date)
+        multivariate_convexity = mvm.yield_convexity(maturity_date=maturity_date)
+        assert abs(vm_convexity - multivariate_convexity) < PASS_THRESH

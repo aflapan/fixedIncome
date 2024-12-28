@@ -98,7 +98,7 @@ if __name__ == '__main__':
     medium_reversion = 0.6358
     long_reversion = 0.0165
 
-    short_rate_vol = 10/10_000  # 10 bps
+    short_rate_vol = 50/10_000  # 50 bps
     medium_vol = 109.2 / 10_000
     long_vol = 96.4/10_000
 
@@ -139,8 +139,7 @@ if __name__ == '__main__':
 
     values = [tmr_vm(date_obj)*100 for date_obj in dates]
     plt.figure(figsize=(13, 5))
-    plt.title(f'Sample Path of the Trebly-Mean Reverting Vasicek Model\n'
-              f'Model Parameters: Long-Term Mean {round(long_term_mean, 3)}, Long Term Volatiltiy {round(long_vol, 3)}\n')
+    plt.title(f'Sample Path of the Trebly-Mean Reverting Vasicek Model')
     plt.axhline(tmr_vm.long_term_mean * 100, linestyle="--", linewidth=0.75, color="grey")
     plt.plot(dates, [tmr_vm.state_variables_diffusion_process(date_obj)[0]*100 for date_obj in dates], linewidth=0.75)
     plt.plot(dates, [tmr_vm.state_variables_diffusion_process(date_obj)[1] * 100 for date_obj in dates], linewidth=0.75)
@@ -160,4 +159,43 @@ if __name__ == '__main__':
     plt.ylabel('Yield (%)')
     plt.grid(alpha=0.25)
     plt.show()
+
+
+    # Yield Volatility plot
+    yield_vols = [tmr_vm.yield_volatility(date_obj) for date_obj in dates[1:]]
+    plt.figure(figsize=(13, 5))
+    plt.title(f'Zero-Coupon Bond Yield Volatilites from the Trebly-Mean Reverting Vasicek Model\n'
+              f'Model Parameters: Long-Term Mean {round(long_term_mean, 3)}, Long Term Volatiltiy {round(long_vol, 3)}\n')
+    plt.plot(dates[1:], yield_vols,  linewidth=0.75)
+    plt.ylabel('Yield Volatility')
+    plt.grid(alpha=0.25)
+    plt.show()
+
+    # Convexity plot
+    yields = [tmr_vm.zero_coupon_bond_yield(date_obj) * 100 for date_obj in dates[1:]]
+    avg_expected_sr = [tmr_vm.average_expected_short_rate(date_obj) * 100 for date_obj in dates[1:]]
+    yield_convexities = [tmr_vm.yield_convexity(date_obj) * 10_000 for date_obj in dates[1:]]
+
+    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+    plt.title(f'Convexity in the Trebly-Mean Reverting Model by Comparing Yields and Conditional Short Rate Averages')
+    plt.plot(dates[1:], yields,  color='tab:blue')
+    plt.plot(dates[1:], avg_expected_sr, color='darkred')
+    plt.ylabel('Yield (%)')
+    plt.grid(alpha=0.25)
+    plt.legend([
+        'Yield',
+        'Avg. Expected Short Rate'],
+        loc='center left', frameon=False)
+
+    ax2 = ax.twinx()
+
+    plt.plot(dates[1:], yield_convexities, color='grey', linestyle='dotted')
+    plt.ylabel('Convexity Adjustment (basis points)')
+    plt.legend(['Difference (Right)'],
+               loc='center right', frameon=False)
+    plt.show()
+
+
+
+
 
