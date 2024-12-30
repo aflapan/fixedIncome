@@ -2,7 +2,8 @@
 This module contains the unit tests for
 fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.vasicek_model.py
 """
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from dateutil.relativedelta import relativedelta
 import math
 import numpy as np
 import pandas as pd
@@ -365,3 +366,58 @@ def test_multivariate_price_convexities_are_same_as_vasicek() -> None:
         vm_convexity = vm.yield_convexity(maturity_date=maturity_date)
         multivariate_convexity = mvm.yield_convexity(maturity_date=maturity_date)
         assert abs(vm_convexity - multivariate_convexity) < PASS_THRESH
+
+
+def test_weights_for_riskless_portfolio_are_mapped_to_zero_by_gradient_matrix() -> None:
+    """
+    Tests that the weights for the riskless protfolio are mapped to 0 by the gradient matrix
+    of all derivatives of zero coupon bonds for the provided set of maturity dates with
+    respect to each of the state variables.
+    """
+    deriv_matrix = np.empty((mvm.dimension, mvm.dimension+1))
+
+    maturity_dates = [date(2025, 1, 1), date(2033, 1, 1)]
+    for index, maturity in enumerate(maturity_dates):
+        deriv_matrix[:, index] = mvm.zero_coupon_bond_price_deriv_wrt_state_variables(maturity_date=maturity)
+
+    weights = mvm.weights_for_riskless_portfolio(maturity_dates=maturity_dates)
+
+    assert sum(np.abs(deriv_matrix @ weights)) < PASS_THRESH
+
+
+def test_portfolio_convexity_for_two_dimensional_process() -> None:
+
+    short_rate_intercept = 0.035
+    short_rate_coefficients = np.array([0.02, 0.001])
+    reversion_level = np.array([0.03, 0.05])
+
+    rho = 0.0
+    stand_dev_1 = 1
+    stand_dev_2 = 1
+    volatility_matrix = np.array([[stand_dev_1 ** 2, stand_dev_1 * stand_dev_2 * rho],
+                                   [stand_dev_1 * stand_dev_2 * rho, stand_dev_2 ** 2]])
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=end_time,
+                                     dimension=2)
+
+
+    reversion_directions = np.array([[1.0/math.sqrt(2), 1.0/math.sqrt(2)],
+                                     [1.0/math.sqrt(2), -1.0/math.sqrt(2)]])
+    reversion_matrix = reversion_directions @ np.array([[0.02, 0.05], [0.05, 0.1]]) @ reversion_directions.T
+
+    mvm = MultivariateVasicekModel(
+        short_rate_intercept=short_rate_intercept,
+        short_rate_coefficients=short_rate_coefficients,
+        reversion_level=reversion_level,
+        reversion_matrix=reversion_matrix,
+        volatility_matrix=volatility_matrix,
+        brownian_motion=brownian_motion,
+        dt=timedelta(1)
+    )
+
+    starting_state_variables = np.array([0.03, 0.075])
+    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
+
+    maturity_dates = [date(2025, 1, 1), date(2033, 1, 1), date(2043, 1, 1)]
+    mvm.riskless_portfolio_convexity(maturity_dates=maturity_dates)

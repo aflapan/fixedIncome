@@ -41,12 +41,12 @@ def datetime_to_path_call(
 
     #num_steps = path.shape[1] if len(path.shape) >= 2 else len(path)
 
-    lower_datetime_index = bisect.bisect_left(datetime_grid, x=datetime_obj)
+    upper_datetime_index = bisect.bisect_left(datetime_grid, x=datetime_obj)
 
-    if datetime_obj == datetime_grid[lower_datetime_index]:
-        return path[:, lower_datetime_index]
+    if datetime_obj == datetime_grid[upper_datetime_index]:
+        return path[:, upper_datetime_index]
 
-    upper_datetime_index = lower_datetime_index + 1
+    lower_datetime_index = upper_datetime_index - 1
     time_since_last_grid_point = DayCountCalculator.compute_accrual_length(start_date=datetime_grid[lower_datetime_index],
                                                                            end_date=datetime_obj,
                                                                            dcc=day_count_convention)

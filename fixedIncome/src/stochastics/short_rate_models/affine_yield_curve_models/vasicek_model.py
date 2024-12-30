@@ -5,6 +5,7 @@ Reference, *Fixed Income Securities, 4th Ed.* by Tuckman and Serrat, page 205.
 Unit tests are contained in
 fixedIncome.tests.test_stochastics.test_short_rate_models.test_affine_yield_curve_models.test_vasicek_model.py
 """
+import itertools
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 import math
@@ -264,8 +265,8 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
             purchase_date = self.start_date_time
 
         short_rate = self(purchase_date)
-        derivatives = self._calculate_bond_price_coeff_derivatives_wrt_maturity(purchase_date = purchase_date,
-                                                                                maturity_date = maturity_date)
+        derivatives = self._calculate_bond_price_coeff_derivatives_wrt_maturity(purchase_date=purchase_date,
+                                                                                maturity_date=maturity_date)
         forward_rate = -derivatives['intercept'] - derivatives['coefficient'] * short_rate
         return forward_rate
 
@@ -343,7 +344,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         and r_t = mu + <g, X_t>.
 
     where K is a diagonalizable reversion matrix, theta is the reversion level vector, X_t are the state variable
-    process, and S is a volatiltiy matrix.
+    process, and S is a volatility matrix.
     -------------------------------------------------------------
     Reference, Chapter 18 of Rebonato's *Bond Pricing and Yield Curve Modelling*, pages 299 -328.
     """
@@ -440,7 +441,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
             raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
 
         accrual = DayCountCalculator.compute_accrual_length(purchase_date, maturity_date, self.day_count_convention)
-        diagonal_term = (1 - np.exp( -self.reversion_matrix_eigenvalues * accrual )) / (self.reversion_matrix_eigenvalues * accrual)
+        diagonal_term = (1 - np.exp( -self.reversion_matrix_eigenvalues * accrual)) / (self.reversion_matrix_eigenvalues * accrual)
         avg_matrix_exponential = self.reversion_matrix_eigenvectors @ np.diag(diagonal_term) @ self.reversion_matrix_eigenvectors_inv
 
         term_1 = avg_matrix_exponential @ self.state_variables_diffusion_process(purchase_date)
@@ -494,6 +495,78 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         state_variables = self.state_variables_diffusion_process(purchase_date)
         affine_price_expression = self.price_state_variable_coeffs['intercept'] + self.price_state_variable_coeffs['coefficients'] @ state_variables
         return math.exp(affine_price_expression)
+
+    def zero_coupon_bond_price_deriv_wrt_state_variables(self,
+                                                         maturity_date: date | datetime,
+                                                         purchase_date: Optional[date | datetime] = None) -> np.array:
+        """
+        Computes the p-dimensional vector derivative dP / dx,
+        where x = (x_1, ..., x_p) are the state variables at the purchase_date.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        bond_price = self.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=purchase_date)
+        return bond_price * self.price_state_variable_coeffs['coefficients']
+
+    def weights_for_riskless_portfolio(self,
+                                       maturity_dates: Iterable[date|datetime],
+                                       purchase_date: Optional[date|datetime] = None) -> np.array:
+        """
+        Get the weights (w_1, ..., w_{p+1}) for the p+1 zero-coupon bonds of maturities in the provided iterable such
+        that
+            sum_{i=1}^{p} w_i dP^{T_i} / dx = 0 and sum_{i=1}^{p+1} w_i = 1.0,
+        where dP^{T_i} / dx is the vector derivative of zero-coupon bond with maturity T_i with respect to the state
+        variables at time purchase_date.
+
+        See Section 20.8 of Rebonato *Bond Pricing and Yield Curve Modeling*
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        maturity_dates = list(maturity_dates)
+        assert len(maturity_dates) == (self.dimension+1)
+
+        matirx_of_deriv_differences = np.zeros((self.dimension, self.dimension))
+        deriv_for_last_bond = self.zero_coupon_bond_price_deriv_wrt_state_variables(purchase_date=purchase_date,
+                                                                                    maturity_date=maturity_dates[self.dimension])
+
+        for dimension in range(self.dimension):  # all but the last bond
+
+            deriv_for_bond = self.zero_coupon_bond_price_deriv_wrt_state_variables(purchase_date=purchase_date,
+                                                                                   maturity_date=maturity_dates[dimension])
+            matirx_of_deriv_differences[:, dimension] = deriv_for_bond - deriv_for_last_bond
+
+        weights = np.linalg.solve(matirx_of_deriv_differences, -deriv_for_last_bond)
+        one_minus_sum_of_weights = np.array([1.0 - sum(weights)])
+        return np.concatenate([weights, one_minus_sum_of_weights])
+
+    def riskless_portfolio_convexity(self,
+                                     maturity_dates: Iterable[date|datetime],
+                                     purchase_date: Optional[date|datetime] = None) -> float:
+        """
+        Returns the convexity of the riskless portfolio of zero-coupon bonds of the provided maturity_dates.
+
+        See equation (21.27) in Rebonato *Bond Pricing and Yield Curve Modeling*.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        maturity_dates = list(maturity_dates)
+        assert len(maturity_dates) == (self.dimension+1)
+
+        weights = self.weights_for_riskless_portfolio(maturity_dates=maturity_dates,
+                                                      purchase_date=purchase_date)
+
+        D_mat = np.zeros(shape=(self.dimension, self.dimension))
+
+        for weight, maturity_date in zip(weights, maturity_dates):
+            bond_price = self.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=purchase_date)
+            price_coefficients = np.expand_dims(self.price_state_variable_coeffs['coefficients'], axis=1)
+            B_t_times_B_t_transpose = price_coefficients @ price_coefficients.T
+            D_mat += bond_price * weight * B_t_times_B_t_transpose
+
+        return 0.5 * sum(np.diag(self.volatility_matrix.T @ D_mat @ self.volatility_matrix))
 
     def zero_coupon_bond_yield(self, maturity_date: date, purchase_date: Optional[date | datetime] = None) -> float:
         """
@@ -721,6 +794,28 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
         return math.sqrt(float(covar_mat))
 
+    def zero_coupon_price_deriv_wrt_maturity(self,
+                                             maturity_date: date|datetime,
+                                             purchase_date: Optional[date|datetime] = None) -> float:
+        """
+        Calculates the derivative d P^T_t / dT of the price of a zero-coupon bond with maturity T
+        with respect to the maturity T.
+
+        By time-homogeneity of the price of a zero-coupon bond in an affine model, this is equal
+        to the negative of the derivative with respect to the purchase date.
+        """
+        if purchase_date is None:
+            purchase_date = self.start_date_time
+
+        coeff_derivatives = self._calculate_bond_price_coeff_derivatives_wrt_maturity(maturity_date=maturity_date,
+                                                                                      purchase_date=purchase_date)
+
+        bond_price = self.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=purchase_date)
+
+        state_variables = self.state_variables_diffusion_process(purchase_date)
+
+        return bond_price * (coeff_derivatives['intercept'] + coeff_derivatives['coefficients'] @ state_variables)
+
 
     def _calculate_bond_price_coeff_derivatives_wrt_maturity(self, maturity_date: date|datetime, purchase_date: Optional[date|datetime] = None) -> dict[str, np.array]:
         """
@@ -737,7 +832,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
         derivatives = {
             'coefficients': self._calculate_coeff_deriv_wrt_maturity(accrual),
-            'intercept'   : self._calculate_intercept_deriv_wrt_maturity(accrual)
+            'intercept': self._calculate_intercept_deriv_wrt_maturity(accrual)
         }
         return derivatives
 
@@ -783,7 +878,7 @@ if __name__ == '__main__':
 
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
-                                                   increment=timedelta(1),
+                                                   increment=relativedelta(days=1),
                                                    max_dates=1_000_000)
 
     vm = VasicekModel(reversion_level=0.04,
@@ -1064,25 +1159,71 @@ if __name__ == '__main__':
         reversion_level=reversion_level,
         reversion_matrix=reversion_matrix,
         volatility_matrix=volatility_matrix,
-        brownian_motion=brownian_motion)
+        brownian_motion=brownian_motion,
+        dt=timedelta(1)
+    )
 
     starting_state_variables = np.array([0.03, 0.075])
     mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
-    admissible_dates = [date_obj for date_obj in dates if date_obj <= vm.end_date_time]
-    plt.figure(figsize=(13, 5))
-    plt.plot(admissible_dates[1:], [mvm(datetime_obj) for datetime_obj in admissible_dates[1:]], linewidth=0.3)
-    plt.show()
 
-    plt.figure(figsize=(13, 5))
-    plt.plot(admissible_dates[1:], [mvm.zero_coupon_bond_yield(maturity_date=datetime_obj) for datetime_obj in admissible_dates[1:]])
-    plt.show()
+    #--------------------------------------------
+    # construct risk-less portfolio of zero-coupon bonds
 
-    plt.figure(figsize=(13, 5))
-    plt.title('Yield Volatility Across Maturity Date')
-    plt.plot(admissible_dates[1:],
-             [mvm.yield_volatility(maturity_date=datetime_obj) for datetime_obj in admissible_dates[1:]])
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    short_rate_from_portfolio_value_change = []
+    approximate_short_rates = []
+    present_values = []
+    for date_obj, next_date in itertools.pairwise(dates):
+        accrual = DayCountCalculator.compute_accrual_length(date_obj, next_date, mvm.day_count_convention)
+
+        maturity_dates = [date_obj + relativedelta(years=1),
+                          date_obj + relativedelta(years=5),
+                          date_obj + relativedelta(years=10),
+                          ]  # must have 3 bonds for 2-dimensional state variable process
+
+        # Construct approximation from convexity + drift (21.27)
+        riskless_weights = mvm.weights_for_riskless_portfolio(maturity_dates=maturity_dates, purchase_date=date_obj)
+        bond_prices = np.array([mvm.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=date_obj)
+                                for maturity_date in maturity_dates])
+        modified_weights = riskless_weights * bond_prices
+
+        price_derivatives = -np.array([mvm.zero_coupon_price_deriv_wrt_maturity(maturity_date=maturity_date, purchase_date=date_obj)
+                                      for maturity_date in maturity_dates])  # negative due to time-homogeneity
+
+        convexity = mvm.riskless_portfolio_convexity(maturity_dates=maturity_dates, purchase_date=date_obj)
+
+        reconstructed_short_rate = (convexity + sum(price_derivatives * modified_weights / bond_prices)) / sum(modified_weights)
+        approximate_short_rates.append(reconstructed_short_rate)
+
+        # construct short rate approximation via riskless portfolio growth
+        new_bond_prices = np.array([mvm.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=next_date)
+                                for maturity_date in maturity_dates])
+
+        change_in_portfolio_value = sum(new_bond_prices * riskless_weights) - sum(modified_weights)
+        short_rate_approx = change_in_portfolio_value/(sum(modified_weights) * accrual)
+        short_rate_from_portfolio_value_change.append(short_rate_approx)
+
+    fig, ax = plt.subplots(1, 1, figsize=(13, 5))
+    plt.plot(dates[:-1], [mvm(date_obj)*100 for date_obj in dates[:-1]], color='black', linewidth=0.5)
+    plt.plot(dates[:-1], [rate * 100 for rate in approximate_short_rates], color='lightgrey', alpha=0.75, linewidth=2)
+    plt.plot(dates[:-1], [rate * 100 for rate in short_rate_from_portfolio_value_change], alpha=0.5, color='darkred', linestyle='dashed', linewidth=1.0)
     plt.grid(alpha=0.25)
+    plt.ylabel('Rate (%)')
+    plt.xlabel('Date')
+    plt.legend(['Short Rate',
+                'Approx. Short Rate from Riskless\nPortfolio Drift and Convexity',
+                'Approx. Short Rate from\nRiskless Portfolio Growth'],
+               frameon=False,
+               bbox_to_anchor=(1.02, 0.65)
+               )
+    plt.title('No-Arbitrage in the Multivariate Mean Reverting Model\nModel Short Rate and Estimated Short Rates from Constructing Riskless Portfolios')
+    fig.tight_layout()
+    plt.savefig('../../../../../../fixedIncome/docs/images/no_arbitrage_multivariate_mean_reverting.png')
     plt.show()
 
 
