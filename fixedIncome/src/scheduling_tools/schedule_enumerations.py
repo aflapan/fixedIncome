@@ -6,6 +6,7 @@ class PaymentFrequency(Enum):  # values indicate number of payments per year
     ANNUAL = 1
     SEMI_ANNUAL = 2
     QUARTERLY = 4
+    MONTHLY = 12
 
 
 class BusinessDayAdjustment(Enum):
@@ -63,3 +64,8 @@ class Months(Enum):
     OCTOBER = 10
     NOVEMBER = 11
     DECEMBER = 12
+
+class PaymentTime(Enum):
+    END_OF_MONTH = 0
+    START_OF_MONTH = 1
+    FIXED_DATE = 2
