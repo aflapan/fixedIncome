@@ -5,6 +5,7 @@ fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.vasicek_
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import math
+import itertools
 import numpy as np
 import pandas as pd
 import pytest
@@ -385,7 +386,15 @@ def test_weights_for_riskless_portfolio_are_mapped_to_zero_by_gradient_matrix() 
     assert sum(np.abs(deriv_matrix @ weights)) < PASS_THRESH
 
 
-def test_portfolio_convexity_for_two_dimensional_process() -> None:
+def test_riskless_portfolio_convexity_no_arbitrage_condition() -> None:
+    """
+    Asserts that the MultivariateVasicekModel exhibits no-arbitrage constraints by
+    constructing a riskless portfolio and constructing an approximation of the short rate
+    using the portfolio convexity.
+
+    See Rebonato *Bond Pricing and Yield Curve Modeling* Equation (21.27).
+    """
+    ONE_BASIS_POINT = 1/(100 * 100)
 
     short_rate_intercept = 0.035
     short_rate_coefficients = np.array([0.02, 0.001])
@@ -395,15 +404,14 @@ def test_portfolio_convexity_for_two_dimensional_process() -> None:
     stand_dev_1 = 1
     stand_dev_2 = 1
     volatility_matrix = np.array([[stand_dev_1 ** 2, stand_dev_1 * stand_dev_2 * rho],
-                                   [stand_dev_1 * stand_dev_2 * rho, stand_dev_2 ** 2]])
+                                  [stand_dev_1 * stand_dev_2 * rho, stand_dev_2 ** 2]])
 
     brownian_motion = BrownianMotion(start_date_time=start_time,
                                      end_date_time=end_time,
                                      dimension=2)
 
-
-    reversion_directions = np.array([[1.0/math.sqrt(2), 1.0/math.sqrt(2)],
-                                     [1.0/math.sqrt(2), -1.0/math.sqrt(2)]])
+    reversion_directions = np.array([[1.0 / math.sqrt(2), 1.0 / math.sqrt(2)],
+                                     [1.0 / math.sqrt(2), -1.0 / math.sqrt(2)]])
     reversion_matrix = reversion_directions @ np.array([[0.02, 0.05], [0.05, 0.1]]) @ reversion_directions.T
 
     mvm = MultivariateVasicekModel(
@@ -419,5 +427,102 @@ def test_portfolio_convexity_for_two_dimensional_process() -> None:
     starting_state_variables = np.array([0.03, 0.075])
     mvm.generate_path(starting_state_variables, set_path=True, seed=1)
 
-    maturity_dates = [date(2025, 1, 1), date(2033, 1, 1), date(2043, 1, 1)]
-    mvm.riskless_portfolio_convexity(maturity_dates=maturity_dates)
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=end_time,
+                                                   increment=timedelta(1),
+                                                   max_dates=1_000_000)
+
+    for date_obj, next_date in itertools.pairwise(dates):
+
+        maturity_dates = [date_obj + relativedelta(years=1),
+                          date_obj + relativedelta(years=5),
+                          date_obj + relativedelta(years=10),
+                          ]  # must have 3 bonds for 2-dimensional state variable process
+
+        # Construct approximation from convexity + drift (21.27)
+        riskless_weights = mvm.weights_for_riskless_portfolio(maturity_dates=maturity_dates, purchase_date=date_obj)
+        bond_prices = np.array([mvm.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=date_obj)
+                                for maturity_date in maturity_dates])
+        modified_weights = riskless_weights * bond_prices
+
+        price_derivatives = -np.array([mvm.zero_coupon_price_deriv_wrt_maturity(maturity_date=maturity_date, purchase_date=date_obj)
+                                      for maturity_date in maturity_dates])  # negative due to time-homogeneity
+
+        convexity = mvm.riskless_portfolio_convexity(maturity_dates=maturity_dates, purchase_date=date_obj)
+
+        reconstructed_short_rate = (convexity + sum(price_derivatives * modified_weights / bond_prices)) / sum(modified_weights)
+        actual_short_rate = mvm(date_obj)
+
+        assert abs(reconstructed_short_rate - actual_short_rate) < ONE_BASIS_POINT
+
+
+def test_riskless_portfolio_growth_no_arbitrage_condition() -> None:
+    """
+    Asserts that the MultivariateVasicekModel exhibits no-arbitrage constraints by
+    constructing a riskless portfolio and constructing an approximation of the short rate
+    using the portfolio growth.
+
+    See Rebonato *Bond Pricing and Yield Curve Modeling* Equation (21.21).
+    """
+    ONE_PERCENT = 1/100
+
+    short_rate_intercept = 0.035
+    short_rate_coefficients = np.array([0.02, 0.001])
+    reversion_level = np.array([0.03, 0.05])
+
+    rho = 0.0
+    stand_dev_1 = 1
+    stand_dev_2 = 1
+    volatility_matrix = np.array([[stand_dev_1 ** 2, stand_dev_1 * stand_dev_2 * rho],
+                                  [stand_dev_1 * stand_dev_2 * rho, stand_dev_2 ** 2]])
+
+    brownian_motion = BrownianMotion(start_date_time=start_time,
+                                     end_date_time=start_time + timedelta(2),
+                                     dimension=2)
+
+    reversion_directions = np.array([[1.0 / math.sqrt(2), 1.0 / math.sqrt(2)],
+                                     [1.0 / math.sqrt(2), -1.0 / math.sqrt(2)]])
+    reversion_matrix = reversion_directions @ np.array([[0.02, 0.05], [0.05, 0.1]]) @ reversion_directions.T
+
+    mvm = MultivariateVasicekModel(
+        short_rate_intercept=short_rate_intercept,
+        short_rate_coefficients=short_rate_coefficients,
+        reversion_level=reversion_level,
+        reversion_matrix=reversion_matrix,
+        volatility_matrix=volatility_matrix,
+        brownian_motion=brownian_motion,
+        dt=relativedelta(hours=1)
+    )
+
+    starting_state_variables = np.array([0.03, 0.075])
+    mvm.generate_path(starting_state_variables, set_path=True, seed=1)
+
+    dates = Scheduler.generate_dates_by_increments(start_date=start_time,
+                                                   end_date=start_time + timedelta(2),
+                                                   increment=relativedelta(hours=1),
+                                                   max_dates=100_000)
+
+    for date_obj, next_date in itertools.pairwise(dates):
+        accrual = DayCountCalculator.compute_accrual_length(date_obj, next_date, mvm.day_count_convention)
+
+        maturity_dates = [date_obj + relativedelta(years=1),
+                          date_obj + relativedelta(years=5),
+                          date_obj + relativedelta(years=10),
+                          ]  # must have 3 bonds for 2-dimensional state variable process
+
+        # Construct approximation from convexity + drift (21.27)
+        riskless_weights = mvm.weights_for_riskless_portfolio(maturity_dates=maturity_dates, purchase_date=date_obj)
+        bond_prices = np.array([mvm.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=date_obj)
+                                for maturity_date in maturity_dates])
+        modified_weights = riskless_weights * bond_prices
+
+        new_bond_prices = np.array([mvm.zero_coupon_bond_price(maturity_date=maturity_date, purchase_date=next_date)
+                                for maturity_date in maturity_dates])
+
+        change_in_portfolio_value = sum(new_bond_prices * riskless_weights) - sum(modified_weights)
+        short_rate_approx = change_in_portfolio_value/(sum(modified_weights) * accrual)
+
+        actual_short_rate = mvm(date_obj)
+
+        assert abs(short_rate_approx - actual_short_rate) < ONE_PERCENT/2
+

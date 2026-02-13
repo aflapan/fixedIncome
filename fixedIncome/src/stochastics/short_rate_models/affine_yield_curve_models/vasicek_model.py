@@ -5,10 +5,12 @@ Reference, *Fixed Income Securities, 4th Ed.* by Tuckman and Serrat, page 205.
 Unit tests are contained in
 fixedIncome.tests.test_stochastics.test_short_rate_models.test_affine_yield_curve_models.test_vasicek_model.py
 """
+from abc import abstractmethod
 import itertools
+import math
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
-import math
+from enum import Enum
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Optional, Iterable, Callable
@@ -19,6 +21,12 @@ from fixedIncome.src.stochastics.base_processes import DriftDiffusionPair
 from fixedIncome.src.stochastics.short_rate_models.affine_yield_curve_models.affine_model_mixin import AffineModelMixin
 from fixedIncome.src.scheduling_tools.schedule_enumerations import DayCountConvention
 from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+
+
+class CalibrationParamterType(Enum):
+    VOLATILITY = 0
+    SHAPE = 1
+    STATE_VARIABLES = 2
 
 def create_affine_function(short_rate_coefficients, short_rate_intercept) -> Callable[[np.array], float]:
     """
@@ -67,12 +75,14 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
                  brownian_motion: BrownianMotion,
                  dt: timedelta | relativedelta = relativedelta(hours=1)) -> None:
 
-        self.long_term_mean = reversion_level
-        self.reversion_speed = reversion_speed
-        self.volatility = volatility
-        self.drift_diffusion_pair = vasicek_drift_diffusion(reversion_level=reversion_level,
-                                                            reversion_scale=reversion_speed,
-                                                            volatility=volatility)
+        self._long_term_mean = reversion_level
+        self._reversion_speed = reversion_speed
+        self._volatility = volatility
+        self.calibrated_starting_state_variables = np.empty(shape=(1,))
+
+        self.drift_diffusion_pair = vasicek_drift_diffusion(reversion_level=self.long_term_mean,
+                                                            reversion_scale=self.reversion_speed,
+                                                            volatility=self.volatility)
 
         diffusion_process = DiffusionProcess(drift_diffusion_collection={'short rate': self.drift_diffusion_pair},
                                              brownian_motion=brownian_motion,
@@ -82,6 +92,46 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
                          state_variables_diffusion_process=diffusion_process)
 
         self.convexity_limit = -self.volatility**2 / (2 * self.reversion_speed**2)
+
+        self.parameter_calibration_dict = {
+            CalibrationParamterType.VOLATILITY: [self._volatility, self._reversion_speed],
+            CalibrationParamterType.SHAPE: [self._long_term_mean],
+            CalibrationParamterType.STATE_VARIABLES: self.calibrated_starting_state_variables,
+        }
+
+    @property
+    def long_term_mean(self) -> float:
+        return self._long_term_mean
+
+    @property
+    def reversion_speed(self) -> float:
+        return self._reversion_speed
+    @property
+    def volatility(self) -> float:
+        return self._volatility
+
+    @property
+    def calibrated_starting_short_rate(self) -> float:
+        return self._calibrated_starting_short_rate
+
+    def set_volatiltiy_parameters_from_dict(self) -> None:
+        """ Takes the volatility parameter values stored in the param dict and sets the
+        appropriate model parameters. """
+        new_params = self.parameter_calibration_dict[CalibrationParamterType.VOLATILITY]
+        self._volatility = new_params[0]
+        self._reversion_speed = new_params[1]
+
+    def set_shape_parameters_from_dict(self) -> None:
+        """ Takes the shape parameter values stored in the param dict and sets the
+         appropriate model parameters. """
+        new_params = self.parameter_calibration_dict[CalibrationParamterType.SHAPE]
+        self._long_term_mean = new_params[0]
+
+    def set_state_variables_from_dict(self) -> None:
+        """ Takes the shape parameter values stored in the param dict and sets the
+         appropriate model parameters. """
+        new_params = self.parameter_calibration_dict[CalibrationParamterType.SHAPE]
+        self._calibrated_starting_short_rate = new_params[0]
 
 
     def short_rate_variance(self,
@@ -238,7 +288,6 @@ class VasicekModel(ShortRateModel, AffineModelMixin):
         return -0.5 * accruals**2 * bond_prices * volatilities**2
 
 
-
     def yield_volatility(self, maturity_date: date | datetime) -> float:
         """
         Returns the volatility for a zero-coupon bond's yield for time T-maturity bonds.
@@ -391,6 +440,29 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
                                                              short_rate_intercept=short_rate_intercept),
             state_variables_diffusion_process=diffusion_process
         )
+
+    @property
+    @abstractmethod
+    def parameter_calibration_dict(self) -> dict:
+        """
+        Returns the dictionary containing list of parameters used for calibration.
+        """
+
+    @abstractmethod
+    def set_volatiltiy_parameters_from_dict(self) -> None:
+        """ Takes the volatility parameter values stored in the param dict and sets the
+        appropriate model parameters. """
+
+    @abstractmethod
+    def set_shape_parameters_from_dict(self) -> None:
+        """ Takes the shape parameter values stored in the param dict and sets the
+         appropriate model parameters. """
+
+    @abstractmethod
+    def set_state_variables_from_dict(self) -> None:
+        """ Takes the shape parameter values stored in the param dict and sets the
+         appropriate model parameters. """
+
 
     def expected_state_variable_mean(self,
                                      maturity_date: date | datetime,
@@ -717,8 +789,8 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         if purchase_date is None:
             purchase_date = self.start_date_time
 
-        if min(maturity_dates) <= purchase_date:
-            raise ValueError(f'Minimum maturity datetime {min(maturity_dates)} can not be less than or equal to the purchase datetime {purchase_date}.')
+        #if min(maturity_dates) <= purchase_date:
+        #    raise ValueError(f'Minimum maturity datetime {min(maturity_dates)} can not be less than or equal to the purchase datetime {purchase_date}.')
 
         maturity_dates = list(maturity_dates)
         beta_mat = np.empty((self.dimension, len(maturity_dates)))
@@ -728,7 +800,7 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
 
         return beta_mat.T @ self.C_mat @ beta_mat
 
-    def yield_volatility(self, maturity_date: datetime|date, purchase_date: Optional[date | datetime] = None) -> float:
+    def yield_volatility(self, maturity_date: datetime | date, purchase_date: Optional[date | datetime] = None) -> float:
         """
         Returns the volatility of the time-t yield for a zero-coupon bond maturing at the specified maturity datetime.
         the volatility is the square root of the variance for the yield.
@@ -736,8 +808,8 @@ class MultivariateVasicekModel(ShortRateModel, AffineModelMixin):
         if purchase_date is None:
             purchase_date = self.start_date_time
 
-        if maturity_date <= purchase_date:
-            raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
+        #if maturity_date <= purchase_date:
+        #    raise ValueError(f'Maturity datetime {maturity_date} can not be less than or equal to the purchase datetime {purchase_date}.')
 
         covar_mat = self.yield_covariance_matrix(maturity_dates=[maturity_date], purchase_date=purchase_date)
         return math.sqrt(float(covar_mat))
@@ -1170,6 +1242,11 @@ if __name__ == '__main__':
     #--------------------------------------------
     # construct risk-less portfolio of zero-coupon bonds
 
+    vm = VasicekModel(reversion_level=0.035,
+                      reversion_speed=reversion_speed,
+                      volatility=SHORT_RATE_VOLATILITY,
+                      brownian_motion=brownian_motion)
+
     dates = Scheduler.generate_dates_by_increments(start_date=start_time,
                                                    end_date=end_time,
                                                    increment=timedelta(1),
@@ -1211,7 +1288,7 @@ if __name__ == '__main__':
     fig, ax = plt.subplots(1, 1, figsize=(13, 5))
     plt.plot(dates[:-1], [mvm(date_obj)*100 for date_obj in dates[:-1]], color='black', linewidth=0.5)
     plt.plot(dates[:-1], [rate * 100 for rate in approximate_short_rates], color='lightgrey', alpha=0.75, linewidth=2)
-    plt.plot(dates[:-1], [rate * 100 for rate in short_rate_from_portfolio_value_change], alpha=0.5, color='darkred', linestyle='dashed', linewidth=1.0)
+    plt.plot(dates[:-1], [rate * 100 for rate in short_rate_from_portfolio_value_change], alpha=0.5, color='darkred', linestyle='dotted', linewidth=0.75)
     plt.grid(alpha=0.25)
     plt.ylabel('Rate (%)')
     plt.xlabel('Date')

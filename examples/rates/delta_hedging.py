@@ -73,6 +73,21 @@ def yields_to_bond_instruments(zc_yields: pd.Series, start_date: date) -> list[U
 curve_factory = YieldCurveFactory()
 
 start_date = date(1993, 9, 3)
+
+three_yr = UsTreasuryBond(price=95 + 3 / 32,
+                            coupon_rate=6.25,
+                            principal=100,
+                            tenor='3Y',
+                            purchase_date=date(1993, 8, 15),
+                            maturity_date=date(1996, 8, 15))
+
+seven_yr = UsTreasuryBond(price=81 + 3 / 32,
+                            coupon_rate=4.25,
+                            principal=100,
+                            tenor='7Y',
+                            purchase_date=date(1993, 8, 15),
+                            maturity_date=date(2000, 8, 15))
+
 ten_yr = UsTreasuryBond(price=86 + 8 / 32,
                             coupon_rate=4.5,
                             principal=100,
@@ -81,7 +96,7 @@ ten_yr = UsTreasuryBond(price=86 + 8 / 32,
                             maturity_date=date(2003, 8, 15))
 
 
-zc_bond_list = yields_to_bond_instruments(data[zero_coupon_yields].loc['1991-09-03'], start_date)
+zc_bond_list = yields_to_bond_instruments(data[zero_coupon_yields].loc['1993-09-03'], start_date)
 yield_curve = curve_factory.bootstrap_yield_curve(zc_bond_list,
                                                   interpolation_method=InterpolationMethod.LINEAR,
                                                   reference_date=start_date)
@@ -91,7 +106,10 @@ treasury_kr_collection = zc_portfolio.to_key_rate_collection(DayCountConvention.
 
 
 bond_portfolio = Portfolio(
-    (PortfolioEntry(2.0, ten_yr),)
+    (PortfolioEntry(2.0, ten_yr),
+     PortfolioEntry(5.0, three_yr),
+     PortfolioEntry(-3.0, seven_yr)
+     )
 )
 
 # ----------------------------------------------------------------
@@ -113,7 +131,7 @@ hedging_portfolio = Portfolio([PortfolioEntry(asset=zc_bond, quantity=hedge_amou
 #--------------------------------------------------------------------------------
 #
 
-def compute_protoflio_pvs(new_date, data) -> tuple[ float | None, float | None ]:
+def compute_protoflio_pvs(new_date, data) -> tuple[float | None, float | None ]:
     try:
         new_zc_bond_list = yields_to_bond_instruments(data[zero_coupon_yields].loc[str(new_date)], new_date)
     except KeyError:
@@ -123,6 +141,26 @@ def compute_protoflio_pvs(new_date, data) -> tuple[ float | None, float | None ]
                                                           interpolation_method=InterpolationMethod.LINEAR,
                                                           reference_date=new_date)
 
+    # collect portfolio cash position
+    portfolio_cash_position = 0.0
+    for portfolio_entry in bond_portfolio:
+        for cashflow in portfolio_entry.asset.cashflow_list:
+            for payment in cashflow:
+                if payment.payment_date <= new_date:
+                    portfolio_cash_position += portfolio_entry.quantity * payment.payment
+
+    bond_portfolio.cash_amount = portfolio_cash_position
+
+    # collect hedging portfolio cash position
+    hedging_cash_position = 0.0
+    for portfolio_entry in hedging_portfolio:
+        for cashflow in portfolio_entry.asset.cashflow_list:
+            for payment in cashflow:
+                if payment.payment_date <= new_date:
+                    hedging_cash_position += portfolio_entry.quantity * payment.payment
+
+    hedging_portfolio.cash_amount = hedging_cash_position
+
     portfolio_pv = new_yield_curve.present_value(bond_portfolio)
     hedge_pv = new_yield_curve.present_value(hedging_portfolio)
     return portfolio_pv, hedge_pv
@@ -130,8 +168,8 @@ def compute_protoflio_pvs(new_date, data) -> tuple[ float | None, float | None ]
 
 frzn_pv = functools.partial(compute_protoflio_pvs, data=data)
 date_range = Scheduler.generate_dates_by_increments(start_date=date(1993, 9, 3),
-                                                        end_date=date(2000, 9, 3),
-                                                        increment=timedelta(1))
+                                                    end_date=date(2000, 9, 3),
+                                                    increment=timedelta(1))
 
 if __name__ == '__main__':
 
@@ -149,5 +187,5 @@ if __name__ == '__main__':
     plt.ylabel('Present Value ($)')
     plt.grid(alpha=0.25)
     plt.legend(['Bond Portfolio', 'Hedge Portfolio'], frameon=False)
-    plt.savefig('../../docs/images/rates/portfolio_and_hedge_present_value_across_time.png')
+    plt.savefig('../../docs/images/rates/portfolio_and_hedge_present_value_across_time_with_cash.png')
     plt.show()

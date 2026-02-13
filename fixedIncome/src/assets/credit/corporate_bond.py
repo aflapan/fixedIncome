@@ -1,37 +1,31 @@
-"""
-
-"""
-
-from datetime import date, timedelta  # type: ignore
-from dateutil.relativedelta import relativedelta  # type: ignore
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-import math  # type: ignore
-import scipy  # type: ignore
-import bisect
-from typing import Optional, TypeAlias, Callable
-from dataclasses import dataclass
-
-from fixedIncome.src.scheduling_tools.scheduler import Scheduler
+from typing import NamedTuple, Optional, Iterable, Callable
+from fixedIncome.src.assets.us_treasury_instruments.us_treasury_instruments import UsTreasuryBond, BondPayment
+from fixedIncome.src.assets.base_cashflow import CashflowCollection
 from fixedIncome.src.scheduling_tools.holidays import Holiday, US_FEDERAL_HOLIDAYS
 from fixedIncome.src.risk.risk_metrics import ONE_BASIS_POINT, ONE_PERCENT
+from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+from fixedIncome.src.scheduling_tools.scheduler import Scheduler
 from fixedIncome.src.scheduling_tools.schedule_enumerations import (PaymentFrequency,
                                                                     BusinessDayAdjustment,
                                                                     DayCountConvention,
                                                                     SettlementConvention,
-                                                                    ImmMonths,
-                                                                    Months)
-
-from fixedIncome.src.scheduling_tools.day_count_calculator import DayCountCalculator
+                                                                    )
 from fixedIncome.src.curves.base_curve import DiscountCurve, KnotValuePair
 from fixedIncome.src.assets.base_cashflow import CashflowCollection, CashflowKeys, Cashflow, Payment
 
-@dataclass
-class BondPayment(Payment):
-    unadjusted_payment_date: date
+from dateutil.relativedelta import relativedelta
+from datetime import date, timedelta
+import scipy  # type: ignore
+import bisect
+import numpy as np
+
+class CallOption(NamedTuple):
+    CallDate: date
+    CallPrice: float | int
 
 
-class UsTreasuryBond(CashflowCollection):
+
+class FixedRateBond(CashflowCollection):
 
     def __init__(self,
                  price: float,
@@ -40,55 +34,87 @@ class UsTreasuryBond(CashflowCollection):
                  tenor: str,
                  purchase_date: date,
                  maturity_date: date,
-                 cusip: Optional[str] = None,
+                 isin: Optional[str] = None,
+                 benchmark_treasury: Optional[UsTreasuryBond] = None,
                  settlement_convention: SettlementConvention = SettlementConvention.T_PLUS_ONE_BUSINESS,
                  payment_frequency: PaymentFrequency = PaymentFrequency.SEMI_ANNUAL,
                  day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_OVER_ACTUAL,
                  business_day_adjustment: BusinessDayAdjustment = BusinessDayAdjustment.FOLLOWING,
-                 holiday_calendar: dict[str, Holiday] = US_FEDERAL_HOLIDAYS) -> None:
+                 holiday_calendar: dict[str, Holiday] = US_FEDERAL_HOLIDAYS
+                 ) -> None:
 
-        self.price = price
-        self.coupon_rate = coupon_rate  # assumed to be in %
-        self.payment_frequency = payment_frequency
+        self._price = price
+        self._coupon_rate = coupon_rate  # in percentage (%)
+        self._principal = principal
+        self._tenor = tenor
+        self._purchase_date = purchase_date
+        self._maturity_date = maturity_date
+        self._isin = isin
+        self._benchmark_treasury = benchmark_treasury
+        self._settlement_convention = settlement_convention
+        self._payment_frequency = payment_frequency
+        self._business_day_adjustment = business_day_adjustment
+        self._holiday_calendar = holiday_calendar
+        self._day_count_convention = day_count_convention
+
         self.num_payments_per_year = self.payment_frequency.value  # enumeration is encoded with these values
-        self.principal = principal
         self.coupon_payment = self.calculate_coupon_payment()   # coupon payment in USD ($)
-        self.tenor = tenor
-        self.purchase_date = purchase_date
-        self.maturity_date = maturity_date
-        self.cusip = cusip
-        self.settlement_convention = settlement_convention
-        self.day_count_convention = day_count_convention
-        self.business_day_adjustment = business_day_adjustment
         self.adjustment_function = self.create_date_adjustment_function()
-        self.holiday_calendar = holiday_calendar
-        self.dated_date = self.calculate_dated_date()
 
+        self.dated_date = self.calculate_dated_date()
         coupon_cashflow = self.create_coupon_payments_cashflow()
         principal_repayment_cashflow = self.create_principal_repayment_cashflow()
-
         super().__init__([coupon_cashflow, principal_repayment_cashflow],
                          [CashflowKeys.COUPON_PAYMENTS, CashflowKeys.SINGLE_PAYMENT])
 
-        self.settlement_date = Scheduler.calculate_settlement_date(purchase_date=self.purchase_date,
-                                                                   settlement_convention=self.settlement_convention,
-                                                                   holiday_calendar=self.holiday_calendar)
-
+        self.settlement_date = Scheduler.calculate_settlement_date(purchase_date=self._purchase_date,
+                                                                   settlement_convention=self._settlement_convention,
+                                                                   holiday_calendar=self._holiday_calendar)
         self.accrued_interest = self.calculate_accrued_interest()
         self.full_price = self.get_full_price()
 
+    @property
+    def payment_frequency(self) -> PaymentFrequency:
+        return self._payment_frequency
 
-    def __repr__(self) -> str:
-        string_rep = f'Bond(price={self.price},\ncoupon_rate={self.coupon_rate},\nprincipal={self.principal},\n' \
-                     f'tenor={self.tenor},\npurchase_date={self.purchase_date},\nmaturity_date={self.maturity_date},\n' \
-                     f'settlement_convention={self.settlement_convention},\npayment_frequency={self.payment_frequency},\n' \
-                     f'day_count_convention={self.day_count_convention},\n' \
-                     f'business_day_adjustment={self.business_day_adjustment})'
+    @property
+    def principal(self) -> float | int:
+        return self._principal
 
-        return string_rep
+    @property
+    def coupon_rate(self) -> float:
+        return self._coupon_rate
 
-    #-------------------------------------------------------------------------
-    # Interface methods
+    @property
+    def maturity_date(self) -> date:
+        return self._maturity_date
+
+    @property
+    def tenor(self) -> str:
+        return self._tenor
+
+    @property
+    def business_day_adjustment(self) -> BusinessDayAdjustment:
+        return self._business_day_adjustment
+
+    @property
+    def holiday_calendar(self) -> dict:
+        return self._holiday_calendar
+
+    @property
+    def day_count_convention(self) -> DayCountConvention:
+        return self._day_count_convention
+
+    @property
+    def purchase_date(self) -> date:
+        return self._purchase_date
+
+    @property
+    def price(self) -> float:
+        return self._price
+
+
+
     def to_knot_value_pair(self) -> KnotValuePair:
         """
         Returns a knot-value pair of the clean price (which does not include
@@ -101,6 +127,7 @@ class UsTreasuryBond(CashflowCollection):
             last_exposure = self[CashflowKeys.SINGLE_PAYMENT][0].payment_date
 
         return KnotValuePair(knot=last_exposure, value=self.price)
+
 
     def present_value(self, curve: DiscountCurve) -> float:
         """
@@ -119,82 +146,19 @@ class UsTreasuryBond(CashflowCollection):
 
         return present_value_coupons + present_value_principal
 
-    #--------------------------------------------------------------------------
-    # Pricing utility functions
-    def calculate_accrued_interest(self, reference_date: Optional[date] = None) -> float:
+    def is_payment_received(self, payment: BondPayment, reference_date: Optional[date] = None) -> bool:
         """
-        Computes the amount of accrued interest between the last payment date
-        or dated-date and the settlement date.
-
-        Returns a float representing the amount of accrued interest.
+        Determines if a given payment will be received by the holder of the us_treasury_instruments
+        if they purchase the us_treasury_instruments on the provided reference date.
+        If no reference date is provided, it is assumed to be the bond settlement date.
         """
-        if self.payment_frequency == PaymentFrequency.ZERO_COUPON:
-            return 0.0
-
-        settlement_date = self.settlement_date if reference_date is None else Scheduler.calculate_settlement_date(purchase_date=reference_date,
-                                                                                                                  settlement_convention=self.settlement_convention,
-                                                                                                                  holiday_calendar=self.holiday_calendar)
-        if self.settlement_date < self.dated_date:
-            raise ValueError(f'Settlement date {self.settlement_date} is before the dated date {self.dated_date}'
-                             f' for us_treasury_instruments\n{self}.')
-
-        # Find last payment accrual date.
-        # if the first coupon payment date is in the future, reference date is when interest beings accruing
-        elif self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date >= settlement_date:
-            reference_date = self.dated_date
-            following_date = self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date
-
+        if reference_date is None:
+            settlement_date = self.settlement_date
         else:
-            date_index = bisect.bisect_right([payment.payment_date for payment in self[CashflowKeys.COUPON_PAYMENTS]], self.purchase_date)
-            previous_date = self[CashflowKeys.COUPON_PAYMENTS][date_index-1].unadjusted_payment_date
-            following_date = self[CashflowKeys.COUPON_PAYMENTS][date_index].unadjusted_payment_date
-            reference_date = previous_date
+            settlement_date = Scheduler.add_business_days(reference_date, 1, self.holiday_calendar)
+        return payment.unadjusted_payment_date >= settlement_date
 
-        accrual_period = DayCountCalculator.compute_accrual_length(
-            reference_date, self.settlement_date, dcc=self.day_count_convention
-        )
 
-        accrual_fraction = accrual_period / DayCountCalculator.compute_accrual_length(
-            reference_date, following_date, dcc=self.day_count_convention
-        )
-
-        return accrual_fraction * self.coupon_payment
-
-    def calculate_coupon_payment(self) -> float:
-        """
-        Calculates the coupon payment in USD ($).
-        Formula is Principal * Coupon (%) /(100 * number of payments per year).
-
-        Here, the 100 in the denominator converts the coupon from percent (%) into decimal values.
-        Number of payments per year is based on the num_payments_per_year.
-        Returns a float.
-        """
-
-        match self.payment_frequency:
-
-            case PaymentFrequency.ZERO_COUPON:
-                return 0
-
-            case _:
-                return self.principal * self.coupon_rate / (100 * self.num_payments_per_year)  # coupon_rate is assumed to be in %
-
-    def get_full_price(self, reference_date: Optional[date] = None) -> float:
-        """
-        Calculates the full price (also referred to as the 'dirty' or 'invoice'
-        price.) Which is equal to the clean market price plus the amount
-        of accrued interest.
-        """
-        reference_date = reference_date if reference_date is not None else self.purchase_date
-
-        if self.accrued_interest is None:
-            self.accrued_interest = self.calculate_accrued_interest(reference_date)
-
-        # normalize the amount of accrued interest by the principal amount
-        # Put into 100 principal convention.
-        normalized_accrued_interest = (self.accrued_interest / self.principal) * 100.0
-        self.full_price = self.price + normalized_accrued_interest
-
-        return self.full_price
 
     def calculate_dated_date(self) -> date:
         """
@@ -215,8 +179,25 @@ class UsTreasuryBond(CashflowCollection):
 
         return dated_date
 
-    #----------------------------------------------------
-    # Payment schedules
+    def calculate_coupon_payment(self) -> float:
+        """
+        Calculates the coupon payment in USD ($).
+        Formula is Principal * Coupon (%) /(100 * number of payments per year).
+
+        Here, the 100 in the denominator converts the coupon from percent (%) into decimal values.
+        Number of payments per year is based on the num_payments_per_year.
+        Returns a float.
+        """
+
+        match self.payment_frequency:
+
+            case PaymentFrequency.ZERO_COUPON:
+                return 0
+
+            case _:
+                return self.principal * self.coupon_rate / (100 * self.num_payments_per_year)  # coupon_rate is assumed to be in %
+
+
     def create_date_adjustment_function(self) -> Callable[[date], date]:
         """
         Creates the date adjustment function for adjusting payment days which don't fall on
@@ -232,18 +213,6 @@ class UsTreasuryBond(CashflowCollection):
                                                                                      holiday_calendar=self.holiday_calendar)
             case _:
                 raise ValueError(f" Business day adjustment {self.business_day_adjustment} is invalid.")
-
-    def is_payment_received(self, payment: BondPayment, reference_date: Optional[date] = None) -> bool:
-        """
-        Determines if a given payment will be received by the holder of the us_treasury_instruments
-        if they purchase the us_treasury_instruments on the provided reference date.
-        If no reference date is provided, it is assumed to be the bond settlement date.
-        """
-        if reference_date is None:
-            settlement_date = self.settlement_date
-        else:
-            settlement_date = Scheduler.add_business_days(reference_date, 1, self.holiday_calendar)
-        return payment.unadjusted_payment_date >= settlement_date
 
     def create_principal_repayment_cashflow(self) -> Cashflow:
         """
@@ -291,9 +260,62 @@ class UsTreasuryBond(CashflowCollection):
         coupon_payments.sort(key=lambda payment: payment.payment_date)  # Sort by payment date
         return Cashflow(coupon_payments)
 
+    def calculate_accrued_interest(self, reference_date: Optional[date] = None) -> float:
+        """
+        Computes the amount of accrued interest between the last payment date
+        or dated-date and the settlement date.
 
-    #------------------------------------------------------
-    # Yield to Maturity calculations
+        Returns a float representing the amount of accrued interest.
+        """
+        if self.payment_frequency == PaymentFrequency.ZERO_COUPON:
+            return 0.0
+
+        settlement_date = self.settlement_date if reference_date is None else Scheduler.calculate_settlement_date(purchase_date=reference_date,
+                                                                                                                  settlement_convention=self.settlement_convention,
+                                                                                                                  holiday_calendar=self.holiday_calendar)
+        if self.settlement_date < self.dated_date:
+            raise ValueError(f'Settlement date {self.settlement_date} is before the dated date {self.dated_date}'
+                             f' for us_treasury_instruments\n{self}.')
+
+        # Find last payment accrual date.
+        # if the first coupon payment date is in the future, reference date is when interest beings accruing
+        elif self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date >= settlement_date:
+            reference_date = self.dated_date
+            following_date = self[CashflowKeys.COUPON_PAYMENTS][0].unadjusted_payment_date
+
+        else:
+            date_index = bisect.bisect_right([payment.payment_date for payment in self[CashflowKeys.COUPON_PAYMENTS]], self.purchase_date)
+            previous_date = self[CashflowKeys.COUPON_PAYMENTS][date_index-1].unadjusted_payment_date
+            following_date = self[CashflowKeys.COUPON_PAYMENTS][date_index].unadjusted_payment_date
+            reference_date = previous_date
+
+        accrual_period = DayCountCalculator.compute_accrual_length(
+            reference_date, self.settlement_date, dcc=self.day_count_convention
+        )
+
+        accrual_fraction = accrual_period / DayCountCalculator.compute_accrual_length(
+            reference_date, following_date, dcc=self.day_count_convention
+        )
+
+        return accrual_fraction * self.coupon_payment
+
+    def get_full_price(self, reference_date: Optional[date] = None) -> float:
+        """
+        Calculates the full price (also referred to as the 'dirty' or 'invoice'
+        price.) Which is equal to the clean market price plus the amount
+        of accrued interest.
+        """
+        reference_date = reference_date if reference_date is not None else self.purchase_date
+
+        if self.accrued_interest is None:
+            self.accrued_interest = self.calculate_accrued_interest(reference_date)
+
+        # normalize the amount of accrued interest by the principal amount
+        # Put into 100 principal convention.
+        normalized_accrued_interest = (self.accrued_interest / self.principal) * 100.0
+        self.full_price = self.price + normalized_accrued_interest
+
+        return self.full_price
 
     def discount_cashflows_by_fixed_rate(self, fixed_rate: float | np.ndarray, reference_date: Optional[date] = None) -> float:
         """
@@ -340,8 +362,7 @@ class UsTreasuryBond(CashflowCollection):
             reference_date = self.purchase_date
 
         full_price = self.get_full_price(reference_date)
-
-        target_price = self.full_price * self.principal/100
+        target_price = full_price * self.principal / 100
         def diff_from_full_price(fixed_rate) -> np.array:
             return np.array([target_price - self.discount_cashflows_by_fixed_rate(fixed_rate, reference_date)])
 
@@ -350,6 +371,7 @@ class UsTreasuryBond(CashflowCollection):
                                        tol=1E-8)
 
         return float(solution['x'])
+
 
     def pv_deriv(self, offset: float = 0, ytm: Optional[float] = None) -> float:
         """
@@ -364,6 +386,36 @@ class UsTreasuryBond(CashflowCollection):
         bumped_down_py = self.discount_cashflows_by_fixed_rate(ytm + offset - ONE_BASIS_POINT/2)
         return (bumped_up_pv - bumped_down_py) / ONE_BASIS_POINT
 
+    def macaulay_duration(self, fixed_rate, reference_date: Optional[date] = None) -> float:
+        ''' Calculates the Macaulay duration of a bond defined to be the weighted average time until'''
+
+        fixed_rate = float(fixed_rate)
+        if reference_date is None:
+            reference_date = self.purchase_date
+
+        pv_times_accrual = 0.0
+        # Accumulate discounted coupon cashflows
+        for payment in self[CashflowKeys.COUPON_PAYMENTS]:  # Zero-coupon bonds should have empty iterable here
+            if self.is_payment_received(payment):
+                accrual = DayCountCalculator.compute_accrual_length(reference_date, payment.payment_date, self.day_count_convention)
+                accrual_times_num_payments = accrual * self.num_payments_per_year
+                accrual_df = 1 / (1 + fixed_rate / self.num_payments_per_year) ** accrual_times_num_payments
+                pv_times_accrual += accrual_df * payment.payment * accrual
+
+        # add discounted principal re-payment
+        for payment in self[CashflowKeys.SINGLE_PAYMENT]:
+            if self.is_payment_received(payment):
+                accrual = DayCountCalculator.compute_accrual_length(reference_date, payment.payment_date,
+                                                                    self.day_count_convention)
+                accrual_times_num_payments = accrual * self.num_payments_per_year
+                accrual_df = 1 / (1 + fixed_rate / self.num_payments_per_year) ** accrual_times_num_payments
+                pv_times_accrual += accrual_df * payment.payment * accrual
+
+        scaled_full_price = self.full_price * self.principal / 100
+
+        return pv_times_accrual/scaled_full_price
+
+
     def duration(self) -> float:
         """
         Calculates the DV01 of the bond with respect to its yield to maturity,
@@ -371,6 +423,7 @@ class UsTreasuryBond(CashflowCollection):
         Duration = -1/P * dP/d ytm
         """
         return -self.pv_deriv() / self.full_price  #TODO: determine if I need to use full price of clean price here
+
 
     def convexity(self) -> float:
         """
@@ -384,72 +437,47 @@ class UsTreasuryBond(CashflowCollection):
         return second_derivative / self.full_price  # TODO: Check if full price or clean price is needed
 
 
-class UsTreasuryFuture(CashflowCollection):
+
+class CallableFixedRateBond(FixedRateBond):
+    ''' A class representing fixed rate bonds which also include call options. '''
     def __init__(self,
-                 deliverables_basket: dict[str, UsTreasuryBond],
-                 conversion_factors: dict[str, float],
-                 tenor: str,
-                 maturity_date: date,
-                 delivery_month: ImmMonths | Months,
-                 purchase_date: date,
-                 holiday_calendar: dict[str, Holiday],
-                 notional_coupon_rate: float = 6.0,  # the notional coupon rate, in percentage points (%)
-                 cusip: Optional[str] = None,
-                 principal: int = 100_000,
-                 settlement_convention: SettlementConvention = SettlementConvention.T_PLUS_ONE_BUSINESS) -> None:
-
-        self._purchase_date = purchase_date
-        self.tenor = tenor
-        self.maturity_date = maturity_date
-        self.settlement_convention = settlement_convention
-        self.holiday_calendar = holiday_calendar
-        self.settlement_date = Scheduler.calculate_settlement_date(purchase_date=self.purchase_date,
-                                                                   settlement_convention=self.settlement_convention,
-                                                                   holiday_calendar=self.holiday_calendar)
-
-        business_days = Scheduler.generate_business_days(start_date=self.settlement_date,
-                                                         end_date=self.maturity_date,
-                                                         holiday_calendar=US_FEDERAL_HOLIDAYS)
-
-        mark_to_market_cashflow = Cashflow([Payment(payment_date=business_day, payment=None)
-                                            for business_day in business_days])
-
-        super().__init__((mark_to_market_cashflow,), (CashflowKeys.MARK_TO_MARKET,))
-
-    @property
-    def purchase_date(self) -> date:
-        return self._purchase_date
-
-    def calculate_cost_to_deliver(self, bond: UsTreasuryBond, delivery_date: date) -> float:
-        """
-        """
+                price: float,
+                coupon_rate: float,
+                principal: int,
+                purchase_date: date,
+                maturity_date: date,
+                call_schedule: Iterable[CallOption],
+                isin: Optional[str] = None,
+                settlement_convention: SettlementConvention = SettlementConvention.T_PLUS_ONE_BUSINESS,
+                payment_frequency: PaymentFrequency = PaymentFrequency.SEMI_ANNUAL,
+                day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_OVER_ACTUAL,
+                business_day_adjustment: BusinessDayAdjustment = BusinessDayAdjustment.FOLLOWING,
+                holiday_calendar: dict[str, Holiday] = US_FEDERAL_HOLIDAYS) -> None:
+        self._price = price
+        self._call_schedule = sorted(list(call_schedule) , key=lambda call_option: call_option.CallDate)
 
 
-#-------------------------------------------------------------------
 
-UsTreasuryInstrument: TypeAlias = UsTreasuryBond | UsTreasuryFuture
+class FixedToFloatBond(CashflowCollection):
+    pass
+
+
+
+class FloatingRateBond(CashflowCollection):
+    pass
 
 
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
 
-    purchase_date = date(2023, 2, 27)
+    corporate_bond = FixedRateBond(
+        price=100,
+        coupon_rate=5.0,
+        principal=1_000_000,
+        tenor='10Y',
+        purchase_date=date(2026, 1, 1),
+        maturity_date=date(2036, 1, 1),
+    )
 
-    two_yr = UsTreasuryBond(price=99 + 9/32,
-                  coupon_rate=5.00,
-                  principal=100,
-                  tenor='2Y',
-                  purchase_date=purchase_date,
-                  maturity_date=date(2025, 2, 28))
-
-    dates = Scheduler.generate_business_days(purchase_date, date(2024, 8, 27), dict())
-    ytms = [two_yr.yield_to_maturity(date_obj)*100 for date_obj in dates]
-    plt.figure(figsize=(10, 6))
-    plt.plot(dates, ytms)
-    plt.grid(alpha=0.25)
-    plt.title(f'Yield to Maturity of a Two Year Treasury Bond as the Purchase Date Rolls Forward in Time\n'
-              f'Clean Price {two_yr.price:0.2f} and Maturity Date {two_yr.maturity_date}')
-    plt.xlabel('Purchase Date')
-    plt.ylabel('Yield to Maturity (%)')
-    plt.show()
+    ytm = corporate_bond.yield_to_maturity()
+    print(corporate_bond.macaulay_duration(fixed_rate=ytm))
 

@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 import calendar
 from dateutil.relativedelta import relativedelta
-from typing import Optional
+from typing import Optional, Iterable
 import itertools
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
@@ -44,6 +44,11 @@ class Loan(CashflowCollection):
 
         self._end_date = self._origination_date + self._term_length
 
+    @property
+    def principal(self) -> float | int:
+        ''' the principal amount of the loan.'''
+        return self._principal
+
     def calculate_fixed_payment_amount(self) -> float:
         '''
         The solution comes from the equation
@@ -55,19 +60,19 @@ class Loan(CashflowCollection):
         )
 
         compound_factor = (1+self._interest_rate/self._payment_frequency.value)**(length_in_years * self._payment_frequency.value)
-        numerator = self._principal * compound_factor
+        numerator = self.principal * compound_factor
         denominator = (1 - compound_factor)/(-self._interest_rate / self._payment_frequency.value)
 
         return numerator/denominator
 
 
 
-    def generate_payment_schedule(self, payment_amount: int | float) -> list[date]:
+    def generate_payment_schedule(self, payment_amount: int | float, extra_payments: Optional[float|Iterable] = None) -> list[date]:
         """ Generates the schedule of payments. """
         payment_dates = []
         payments = []
         start_date = self._origination_date
-        remaining_principal = self._principal
+        remaining_principal = self.principal
 
         # adjust start date
         match self._payment_time:
@@ -103,7 +108,20 @@ class Loan(CashflowCollection):
             payment_dates.append(payment_date)
             payment_date += payment_increment
 
-        for sd, ed in itertools.pairwise(payment_dates):
+        # unpack extra payments
+        if extra_payments is not None:
+            if isinstance(extra_payments, float):
+                extra_payments = [extra_payments for payment in payment_dates]
+            else:
+                extra_payments = list(extra_payments)
+                if len(extra_payments) <= len(payment_dates):
+                    extra_payments = extra_payments + [0.0 for payment in range(len(extra_payments), len(payment_dates))]
+                else:
+                    extra_payments = extra_payments[slice(0, len(payment_dates))]
+        else:
+            extra_payments = [0.0 for payment_date in payment_dates]
+
+        for extra_payment, (sd, ed) in zip(extra_payments, itertools.pairwise(payment_dates)):
 
             interest_payment = self._calculate_interest_payment(
                 accrual_start=sd,
@@ -112,7 +130,8 @@ class Loan(CashflowCollection):
                 principal=remaining_principal
             )
 
-            principal_payment_amount = payment_amount - interest_payment
+            principal_payment_amount = payment_amount - interest_payment + extra_payment
+
             if remaining_principal <= principal_payment_amount:
                 principal_payment_amount = remaining_principal
                 payment_amount = principal_payment_amount + interest_payment
@@ -138,7 +157,7 @@ class Loan(CashflowCollection):
             interest_rate = self._interest_rate
 
         if principal is None:
-            principal = self._principal
+            principal = self.principal
 
         accrual_factor = DayCountCalculator.compute_accrual_length(
             accrual_start, accrual_end, dcc=self._day_count_convention
@@ -147,10 +166,10 @@ class Loan(CashflowCollection):
         return accrual_factor * interest_rate * principal
 
 
-    def plot_amortization_schedule(self, payment_amount: int | float) -> None:
+    def plot_amortization_schedule(self, payment_amount: int | float,  extra_payments: Optional[float|Iterable] = None) -> None:
         ''' Plots the amortization schedule'''
-        payment_schedule = self.generate_payment_schedule(payment_amount=payment_amount)
-        plt.plot(figsize=(15, 5))
+        payment_schedule = self.generate_payment_schedule(payment_amount=payment_amount, extra_payments=extra_payments)
+        plt.figure(figsize=(15, 5))
         plt.plot([payment.payment_date for payment in payment_schedule],
                  [payment.payment for payment in payment_schedule])
 
@@ -159,6 +178,10 @@ class Loan(CashflowCollection):
 
         plt.plot([payment.payment_date for payment in payment_schedule],
                  [payment.interest_payment for payment in payment_schedule])
+        plt.legend(['Payment', 'Principal', 'Interest'], frameon=False)
+        plt.xlabel('Date')
+        plt.ylabel('USD ($)')
+        plt.grid(alpha=0.25)
 
         plt.show()
 
@@ -187,13 +210,15 @@ if __name__ == '__main__':
     monthly_payment = mortgage.calculate_fixed_payment_amount()
 
     print(monthly_payment)
-    payments = mortgage.generate_payment_schedule(payment_amount=monthly_payment)
+    payments = mortgage.generate_payment_schedule(payment_amount=monthly_payment, extra_payments=None)
 
     print('\n'.join([str(payment) for payment in payments]))
 
-    print('Original principal is: ', mortgage._principal)
+    print('Original principal is: ', mortgage.principal)
     print('Sum of principal payments is: ', sum(payment.principal_payment for payment in payments))
 
-    mortgage.plot_amortization_schedule(payment_amount=monthly_payment)
+    mortgage.plot_amortization_schedule(payment_amount=monthly_payment, extra_payments=None)
+
+    print('Total interest paid: ', sum(payment.interest_payment for payment in payments))
 
 

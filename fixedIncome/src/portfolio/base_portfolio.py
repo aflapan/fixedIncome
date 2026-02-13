@@ -14,8 +14,9 @@ class Portfolio:
     """
     A base class representing a portfolio of assets, i.e. CashflowCollection objects.
     """
-    def __init__(self, assets: Iterable[PortfolioEntry]) -> None:
+    def __init__(self, assets: Iterable[PortfolioEntry], cash_amount: float = 0.0) -> None:
         self._assets = list(assets)
+        self.cash_amount = cash_amount
         self._iter_index = 0
 
     @property
@@ -41,7 +42,7 @@ class Portfolio:
         Calculates the present value of the portfolio on a given discount curve by
         summing the present values of the individual positions times the quantity held.
         """
-        return sum(entry.quantity * entry.asset.present_value(curve) for entry in self.assets)
+        return sum(entry.quantity * entry.asset.present_value(curve) for entry in self.assets) + self.cash_amount
 
     def to_key_rate_collection(self, day_count_convention: DayCountConvention) -> KeyRateCollection:
         """
