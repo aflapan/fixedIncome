@@ -4,7 +4,7 @@ from typing import Optional
 
 
 class PortfolioOptimizer:
-    def __init__(self, mean_vector: np, covariance_mat):
+    def __init__(self, mean_vector: np, covariance_mat: np.array) -> None:
         self._mean_vector = mean_vector
         self._covariance_matrix = covariance_mat
         self.num_assets = len(self._mean_vector)
